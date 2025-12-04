@@ -9,93 +9,103 @@ from nba_safe_bets.dashboard.components.player_card import render_player_card
 from nba_safe_bets.dashboard.components.charts import render_charts
 
 
+# ----------------------------------------------------
+# PAGE CONFIG
+# ----------------------------------------------------
 st.set_page_config(
     page_title="NBA Safe Bets",
     layout="wide",
-    initial_sidebar_state="expanded"
+    page_icon="🏀"
 )
 
-# Storage for logs
-if "debug_logs" not in st.session_state:
-    st.session_state["debug_logs"] = []
-
-
-def log(msg):
-    """Append message to the debug log."""
-    st.session_state["debug_logs"].append(str(msg))
-
-
-# -------------------------------------------------------------------
-# PAGE HEADER
-# -------------------------------------------------------------------
 st.title("🏀 NBA Top 25 Safest Bets (Daily Prediction Engine)")
 st.write("Automatically generated predictions based on stats, matchups, injuries, odds, and player context.")
-st.divider()
 
 
-# -------------------------------------------------------------------
-# RUN ENGINE
-# -------------------------------------------------------------------
-if st.button("🚀 Run Prediction Engine"):
-    st.session_state["debug_logs"].clear()
+# ----------------------------------------------------
+# DEBUG LOG CAPTURE
+# ----------------------------------------------------
+debug_messages = []
+
+def log_debug(msg):
+    """Collect messages that daily_predict() will send back."""
+    debug_messages.append(str(msg))
+
+
+# ----------------------------------------------------
+# RUN ENGINE BUTTON
+# ----------------------------------------------------
+if "predictions" not in st.session_state:
+    st.session_state["predictions"] = None
+
+if st.button("🔄 Run Prediction Engine"):
+    st.write("Running daily_predict()...")
 
     try:
-        st.write("Running daily_predict()...")
-        preds = daily_predict()   # No extra args!
-
+        preds = daily_predict(debug_log_fn=log_debug)
         st.session_state["predictions"] = preds
         st.success("daily_predict() executed successfully!")
 
     except Exception as e:
         st.error("Prediction engine failed.")
-        log("ENGINE ERROR:\n" + traceback.format_exc())
-        st.session_state["predictions"] = pd.DataFrame()
+        st.code(traceback.format_exc())
 
 
-# -------------------------------------------------------------------
-# DEBUG LOG PANEL
-# -------------------------------------------------------------------
+preds = st.session_state.get("predictions", None)
+
+
+# ----------------------------------------------------
+# DEBUG LOG SECTION
+# ----------------------------------------------------
 with st.expander("🔍 DEBUG LOG (click to expand)"):
-    if st.session_state["debug_logs"]:
-        for line in st.session_state["debug_logs"]:
-            st.text(line)
-    else:
+    if len(debug_messages) == 0:
         st.write("No debug logs recorded yet.")
+    else:
+        for line in debug_messages:
+            st.text(line)
 
 
-# -------------------------------------------------------------------
-# PROCESS RESULTS
-# -------------------------------------------------------------------
-preds = st.session_state.get("predictions", pd.DataFrame())
+# ----------------------------------------------------
+# TOP 25 SAFE BETS — SAFE CHECKS ADDED
+# ----------------------------------------------------
+st.subheader("🔒 Top 25 Safest Bets Today")
 
-st.divider()
-st.header("🔒 Top 25 Safest Bets Today")
-
-if preds is None or preds.empty or not isinstance(preds, pd.DataFrame):
-    st.warning("No predictions available.")
+if (
+    preds is None
+    or not isinstance(preds, pd.DataFrame)
+    or preds.empty
+):
+    st.write("No predictions available.")
 else:
     render_bet_table(preds)
 
-    # -------------------------------------------------------------------
-    # CHARTS
-    # -------------------------------------------------------------------
-    st.divider()
-    st.header("📈 Visualization")
-    try:
-        render_charts(preds)
-    except Exception as e:
-        st.error("Failed to render charts.")
-        log("CHART ERROR:\n" + traceback.format_exc())
 
-    # -------------------------------------------------------------------
-    # PLAYER PROFILES
-    # -------------------------------------------------------------------
-    st.divider()
-    st.header("📊 Player Profiles")
+# ----------------------------------------------------
+# PLAYER PROFILES
+# ----------------------------------------------------
+st.subheader("📊 Player Profiles")
 
-    try:
-        for _, row in preds.iterrows():
-            render_player_card(row)
-    except Exception as e:
-        st.error("Failed to render player cards.")
-        log("CARD ERROR:\n" + traceback.format_exc())
+if (
+    preds is None
+    or not isinstance(preds, pd.DataFrame)
+    or preds.empty
+):
+    st.write("Prediction results required to display player profiles.")
+else:
+    # Show top 5 players only
+    top_players = preds.head(5)
+
+    for _, row in top_players.iterrows():
+        render_player_card(row)
+
+
+# ----------------------------------------------------
+# CHARTS (Only shown if predictions exist)
+# ----------------------------------------------------
+if (
+    preds is not None
+    and isinstance(preds, pd.DataFrame)
+    and not preds.empty
+):
+    st.subheader("📈 Prediction Charts Overview")
+    render_charts(preds)
