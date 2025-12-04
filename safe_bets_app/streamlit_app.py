@@ -3,105 +3,72 @@ import pandas as pd
 import traceback
 
 # -------------------------------------------------------------------
-# Correct imports for Streamlit Cloud
+# Correct imports for Streamlit Cloud (must include safe_bets_app)
 # -------------------------------------------------------------------
-from nba_safe_bets.daily_predict.daily_predict import daily_predict
-from nba_safe_bets.dashboard.components.bet_table import render_bet_table
-from nba_safe_bets.dashboard.components.player_card import render_player_card
-from nba_safe_bets.dashboard.components.charts import render_charts
-
-
-# -------------------------------------------------------------------
-# DEBUG LOGGING BUFFER
-# -------------------------------------------------------------------
-debug_logs = []
-
-def log_debug(msg: str):
-    debug_logs.append(msg)
-
+from safe_bets_app.nba_safe_bets.daily_predict.daily_predict import daily_predict
+from safe_bets_app.nba_safe_bets.dashboard.components.bet_table import render_bet_table
+from safe_bets_app.nba_safe_bets.dashboard.components.player_card import render_player_card
+from safe_bets_app.nba_safe_bets.dashboard.components.charts import render_charts
 
 # -------------------------------------------------------------------
-# PAGE CONFIG
+# PAGE SETUP
 # -------------------------------------------------------------------
 st.set_page_config(
-    page_title="NBA Safe Bets Predictor",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="NBA Safe Bet Engine",
+    page_icon="🏀",
+    layout="wide"
 )
 
 st.title("🏀 NBA Top 25 Safest Bets (Daily Prediction Engine)")
 st.write("Automatically generated predictions based on stats, matchups, injuries, odds, and player context.")
-st.divider()
+
+debug_logs = []
+
+
+def log_debug(msg):
+    debug_logs.append(msg)
 
 
 # -------------------------------------------------------------------
-# RUN DAILY PREDICT ENGINE
+# RUN PREDICTIONS
 # -------------------------------------------------------------------
-st.write("### Running daily_predict()...")
-
-preds = None
+st.subheader("Running daily_predict()...")
 
 try:
     preds = daily_predict(debug_log_fn=log_debug)
     st.success("daily_predict() executed successfully!")
-
 except Exception as e:
-    st.error("Prediction engine failed. See debug logs below.")
-    log_debug("--- ERROR ---")
-    log_debug(str(e))
-    log_debug(traceback.format_exc())
-
+    st.error(f"Prediction engine failed.\n\n{e}")
+    debug_logs.append(traceback.format_exc())
+    preds = None
 
 # -------------------------------------------------------------------
-# DEBUG LOG OUTPUT
+# DEBUG LOG DISPLAY
 # -------------------------------------------------------------------
-with st.expander("🔍 DEBUG LOG (click to expand)", expanded=False):
+with st.expander("🔍 DEBUG LOG (click to expand)"):
     if debug_logs:
         for line in debug_logs:
             st.text(line)
     else:
-        st.write("No debug logs recorded.")
-
+        st.text("No debug logs recorded yet.")
 
 # -------------------------------------------------------------------
-# VALIDATE & DISPLAY TOP BETS
+# RESULTS
 # -------------------------------------------------------------------
 st.subheader("🔒 Top 25 Safest Bets Today")
 
-if preds is None:
-    st.warning("Prediction engine returned None.")
-    st.stop()
-
-if not isinstance(preds, pd.DataFrame):
-    st.error("daily_predict() did not return a DataFrame.")
-    st.stop()
-
-if preds.empty:
+if preds is None or not isinstance(preds, pd.DataFrame) or preds.empty:
     st.warning("No predictions available.")
-    st.stop()
-
-if "confidence" not in preds.columns:
-    preds["confidence"] = 0.0
-
-top25 = preds.sort_values(by="confidence", ascending=False).head(25)
-render_bet_table(top25)
-
+else:
+    st.success("Predictions generated!")
+    render_bet_table(preds.head(25))
 
 # -------------------------------------------------------------------
-# PLAYER CARDS
+# PLAYER PROFILES
 # -------------------------------------------------------------------
 st.subheader("📊 Player Profiles")
 
-if "player_name" in preds.columns:
-    for _, row in top25.iterrows():
-        render_player_card(row)
+if preds is None or preds.empty:
+    st.info("Prediction results required to display player profiles.")
 else:
-    st.info("Missing column 'player_name' — cannot render player profiles.")
-
-
-# -------------------------------------------------------------------
-# CHARTS
-# -------------------------------------------------------------------
-st.subheader("📈 Analytics & Visualizations")
-render_charts(preds)
-
+    render_player_card(preds)
