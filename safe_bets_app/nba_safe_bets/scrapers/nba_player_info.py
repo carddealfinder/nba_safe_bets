@@ -1,35 +1,45 @@
-import pandas as pd
 import requests
+import pandas as pd
 
-# Cloud-safe NBA player list (public JSON)
-PLAYER_LIST_URL = "https://raw.githubusercontent.com/bttmly/nba/master/data/players.json"
+
+BASE = "https://api.balldontlie.io/v1"
+HEADERS = {"Authorization": ""}  # optional free tier key
+
 
 def get_player_list():
     """
-    Returns a DataFrame with columns:
-    PLAYER_ID, PLAYER_NAME, TEAM_ID
-    using a public GitHub-hosted NBA dataset.
+    Loads ALL active + inactive players from BallDontLie.
+    BallDontLie returns paginated results, so we loop.
     """
-    try:
-        r = requests.get(PLAYER_LIST_URL, timeout=10)
+
+    print("🔍 Using BallDontLie API for players...")
+
+    players = []
+    page = 1
+
+    while True:
+        url = f"{BASE}/players?page={page}&per_page=100"
+        r = requests.get(url, headers=HEADERS)
+
+        if r.status_code != 200:
+            print("[ERROR] Player API failed:", r.text)
+            break
+
         data = r.json()
-    except Exception as e:
-        print("[ERROR] Failed to fetch player list:", e)
-        return pd.DataFrame(columns=["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"])
 
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
+        players.extend(data["data"])
 
-    # Ensure required columns
-    if "playerId" not in df or "firstName" not in df or "lastName" not in df:
-        print("[ERROR] Player dataset missing required fields.")
-        return pd.DataFrame(columns=["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"])
+        if page >= data["meta"]["total_pages"]:
+            break
 
-    # Build expected schema
-    df["PLAYER_ID"] = df["playerId"]
-    df["PLAYER_NAME"] = df["firstName"] + " " + df["lastName"]
+        page += 1
 
-    # TEAM ID not included → fill null (your model can handle this)
-    df["TEAM_ID"] = None
+    if not players:
+        print("[ERROR] No player data returned.")
+        return pd.DataFrame()
 
-    return df[["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"]]
+    df = pd.DataFrame(players)
+
+    return df[["id", "first_name", "last_name", "team"]].rename(
+        columns={"id": "PLAYER_ID"}
+    )
