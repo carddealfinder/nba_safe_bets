@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from daily_predict.daily_predict import daily_predict
+from nba_safe_bets.daily_predict.daily_predict import daily_predict
 from dashboard.components.bet_table import render_bet_table
 from dashboard.components.player_card import render_player_card
 from dashboard.components.charts import render_player_charts
