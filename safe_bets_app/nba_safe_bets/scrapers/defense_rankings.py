@@ -1,15 +1,26 @@
+import requests
 import pandas as pd
 
-NBA_TEAM_PTS_ALLOWED = "https://www.nba.com/stats/teams/defense?Season=2024-25&SeasonType=Regular%20Season"
 
-def get_all_defense_rankings():
-    """Scrapes defensive rankings from NBA.com HTML (safe)."""
+URL = "https://www.basketball-reference.com/leagues/NBA_2024_ratings.html"
+
+
+def get_defense_rankings():
+    """Scrapes defense efficiency per team."""
     try:
-        tables = pd.read_html(NBA_TEAM_PTS_ALLOWED)
-        df = tables[0]
-        df = df.rename(columns={"Team": "TEAM", "PTS": "POINTS_ALLOWED"})
-        df["TEAM"] = df["TEAM"].str.replace("*", "", regex=False)
-        return {"points": df}
+        df_list = pd.read_html(URL)
     except Exception as e:
-        print("[ERROR] Unable to scrape defensive rankings:", e)
-        return {"points": pd.DataFrame()}
+        print("[DEFENSE ERROR]", e)
+        return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
+
+    df = df_list[0]
+
+    df = df.rename(columns={
+        "Team": "team",
+        "DRtg": "points",
+        "ORB%": "rebounds",
+        "AST%": "assists",
+        "3P%": "threes"
+    })
+
+    return df[["team", "points", "rebounds", "assists", "threes"]]

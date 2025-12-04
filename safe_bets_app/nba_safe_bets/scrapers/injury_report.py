@@ -1,20 +1,26 @@
+import requests
 import pandas as pd
 
-def get_injury_report():
-    """Scrapes NBA injury report from Rotowire (public, allowed)."""
-    url = "https://www.rotowire.com/basketball/injury-report.php"
+# Placeholder endpoint — replace with real source if available
+INJURY_URL = "https://cdn.nba.com/static/json/injury/injury_2024.json"
 
+
+def get_injury_report():
     try:
-        tables = pd.read_html(url)
-        df = tables[0]  # first table = injuries
-        df = df.rename(columns={
-            "Player": "PLAYER_NAME",
-            "Team": "TEAM",
-            "Pos": "POS",
-            "Injury": "INJURY",
-            "Status": "STATUS"
+        r = requests.get(INJURY_URL, timeout=10)
+        r.raise_for_status()
+    except Exception:
+        print("[INJURY] Unable to fetch injury report.")
+        return pd.DataFrame(columns=["id", "injury_status", "injury_desc"])
+
+    payload = r.json().get("league", {}).get("standard", [])
+    rows = []
+
+    for p in payload:
+        rows.append({
+            "id": p.get("personId"),
+            "injury_status": p.get("status"),
+            "injury_desc": p.get("detail")
         })
-        return df
-    except Exception as e:
-        print("[ERROR] Failed to fetch injury report:", e)
-        return pd.DataFrame(columns=["PLAYER_NAME", "TEAM", "POS", "INJURY", "STATUS"])
+
+    return pd.DataFrame(rows)
