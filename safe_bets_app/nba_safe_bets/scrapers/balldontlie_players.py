@@ -4,18 +4,20 @@ import pandas as pd
 
 BASE_URL = "https://api.balldontlie.io/v1/players"
 
-
 def get_player_list(per_page=100):
-    """Fetch ALL players from Balldontlie using proper pagination."""
+    """Fetch ALL NBA players through the Balldontlie API."""
+    key = os.getenv("BALDONTLIE_API_KEY")
 
-    api_key = os.getenv("BALDONTLIE_API_KEY")
+    # 🔍 DEBUG: Show whether key exists on Streamlit Cloud
+    print(f"[BDL DEBUG] API key loaded? {bool(key)}")
+    print(f"[BDL DEBUG] Key length: {len(key) if key else 0}")
 
-    if not api_key:
-        print("[BDL ERROR] No BALDONTLIE_API_KEY environment variable found.")
+    if not key:
+        print("[BDL ERROR] Missing BALDONTLIE_API_KEY")
         return pd.DataFrame()
 
-    # Balldontlie uses query param ?key=API_KEY
-    headers = {}  # No Authorization header
+    headers = {"Authorization": f"Bearer {key}"}
+
     players = []
     page = 1
 
@@ -24,11 +26,7 @@ def get_player_list(per_page=100):
     while True:
         print(f"[BDL] Fetching page {page}")
 
-        params = {
-            "page": page,
-            "per_page": per_page,
-            "key": api_key   # ← THIS IS THE FIX
-        }
+        params = {"page": page, "per_page": per_page}
 
         try:
             r = requests.get(BASE_URL, params=params, headers=headers, timeout=10)
@@ -38,10 +36,7 @@ def get_player_list(per_page=100):
             break
 
         data = r.json()
-
-        # Extract players
         if "data" not in data or len(data["data"]) == 0:
-            print("[BDL] No more player data found.")
             break
 
         for p in data["data"]:
@@ -49,12 +44,11 @@ def get_player_list(per_page=100):
                 "id": p["id"],
                 "first_name": p["first_name"],
                 "last_name": p["last_name"],
-                "team": p["team"]["full_name"] if p["team"] else None
+                "team": p["team"]["full_name"] if p.get("team") else None
             })
 
-        # Pagination flag
-        meta = data.get("meta", {})
-        if not meta.get("has_more", False):
+        # stop if end of pages
+        if not data.get("meta", {}).get("has_more", False):
             break
 
         page += 1
