@@ -1,84 +1,77 @@
-import pandas as pd
-import streamlit as st
+from ..scrapers.balldontlie_players import get_player_list
+from ..scrapers.schedule_scraper import get_daily_schedule
+from ..scrapers.injury_report import get_injury_report
+from ..scrapers.defense_rankings import get_defense_rankings
+from ..scrapers.DraftKings_scraper import get_draftkings_odds
 
-from nba_safe_bets.scrapers.balldontlie_players import get_player_list
-from nba_safe_bets.scrapers.schedule_scraper import get_daily_schedule
-from nba_safe_bets.scrapers.injury_report import get_injuries
-from nba_safe_bets.scrapers.defense_rankings import get_defense_rankings
-from nba_safe_bets.scrapers.DraftKings_scraper import get_draftkings_odds
+from .model_loader import load_models
+from .safe_bet_ranker import rank_safe_bets
 
-from nba_safe_bets.daily_predict.model_loader import load_models
-from nba_safe_bets.daily_predict.safe_bet_ranker import rank_safe_bets
+from ..processors.feature_builder import build_features
+from ..processors.context_features import add_context_features
+
+
+# --- Models & Ranking ---
+from .model_loader import load_models
+from .safe_bet_ranker import rank_safe_bets
 
 
 def daily_predict():
     st.write("🔍 DEBUG: Starting Daily Prediction Engine")
 
-    # -------------------------
-    # 1. LOAD PLAYER LIST
-    # -------------------------
+    # 1. Load players
     players = get_player_list()
     st.write("Players DF Shape:", players.shape)
 
     if players.empty:
-        st.error("Player list is empty — cannot continue.")
-        return None
+        st.write("❌ Player list empty — stopping")
+        return pd.DataFrame()
 
-    # -------------------------
-    # 2. LOAD DAILY SCHEDULE
-    # -------------------------
+    # 2. Load schedule
     schedule = get_daily_schedule()
-    st.write("Schedule DF Shape:", getattr(schedule, 'shape', 'N/A'))
-
     if isinstance(schedule, list):
         schedule = pd.DataFrame(schedule)
 
-    # -------------------------
-    # 3. LOAD INJURY REPORTS
-    # -------------------------
-    injuries = get_injuries()
+    st.write("Schedule DF Shape:", schedule.shape)
+
+    # 3. Injuries
+    injuries = get_injury_report()
     st.write("Injury DF Shape:", injuries.shape)
 
-    # -------------------------
-    # 4. DEFENSE RANKINGS
-    # -------------------------
+    # 4. Defense rankings
     defense = get_defense_rankings()
-    st.write("Defense DF Shape:", defense.shape)
+    st.write("Defense keys:", list(defense.columns))
 
-    # -------------------------
-    # 5. DRAFTKINGS ODDS
-    # -------------------------
-    dk_odds = get_draftkings_odds()
-    st.write("DraftKings Odds Shape:", dk_odds.shape)
+    # 5. DraftKings odds
+    dk = get_draftkings_odds()
+    st.write("DraftKings DF Shape:", dk.shape)
 
-    # -------------------------
-    # 6. LOAD MODELS
-    # -------------------------
+    # 6. Load trained models
     models = load_models()
     st.write("Models Loaded:", list(models.keys()))
 
     if not models:
-        st.error("❌ No models loaded — cannot generate predictions.")
-        return None
+        st.write("❌ No models loaded — cannot continue")
+        return pd.DataFrame()
 
-    # -------------------------
-    # 7. GENERATE PREDICTIONS
-    # -------------------------
-
+    # 7. Merge everything into a feature table
     merged = players.copy()
-    merged["projected_score"] = 0.0
-    merged["model_name"] = "dummy"
+    merged = merged.merge(schedule, on="team", how="left")
+    merged = merged.merge(defense, on="team", how="left")
 
-    for model_name, model in models.items():
-        preds = model.predict([[0]])  # dummy prediction
-        merged.loc[merged.index, "projected_score"] += preds[0]
+    # injuries (left merge on player id)
+    if not injuries.empty:
+        merged = merged.merge(injuries, on="id", how="left")
 
-    # -------------------------
-    # 8. RANK SAFE BETS
-    # -------------------------
-    ranked = rank_safe_bets(merged)
+    # DK odds (merge on player name)
+    if not dk.empty:
+        merged = merged.merge(dk, on="player", how="left")
 
-    st.write("Final Prediction DF:")
-    st.dataframe(ranked.head())
+    # Sanity check
+    st.write("Merged DF Shape:", merged.shape)
+
+    # 8. Run ranker
+    ranked = rank_safe_bets(merged, models)
+    st.write("Final ranked DF Shape:", ranked.shape)
 
     return ranked
