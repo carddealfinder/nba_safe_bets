@@ -1,3 +1,9 @@
+import requests
+import pandas as pd
+from nba_safe_bets.utils.retry import safe_request   # ✅ FIXED IMPORT
+
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+
 def get_player_list(season="2024-25"):
     url = "https://stats.nba.com/stats/commonallplayers"
 
@@ -8,35 +14,17 @@ def get_player_list(season="2024-25"):
     }
 
     data = safe_request(url, params=params, headers=HEADERS)
-
-    # ----------------------------
-    # Handle API failure
-    # ----------------------------
     if data is None:
-        print("[ERROR] NBA API blocked or returned no data for players.")
-        # Return empty but properly structured DataFrame
-        return pd.DataFrame(columns=["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"])
+        return pd.DataFrame()
 
-    try:
-        rows = data["resultSets"][0]["rowSet"]
-        headers = data["resultSets"][0]["headers"]
-    except Exception as e:
-        print("[ERROR] Unexpected NBA API structure:", e)
-        return pd.DataFrame(columns=["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"])
+    rows = data["resultSets"][0]["rowSet"]
+    headers = data["resultSets"][0]["headers"]
 
     df = pd.DataFrame(rows, columns=headers)
-
     df.rename(columns={
         "PERSON_ID": "PLAYER_ID",
         "DISPLAY_FIRST_LAST": "PLAYER_NAME"
     }, inplace=True)
 
-    # Ensure columns exist even if missing from the API
-    if "PLAYER_ID" not in df.columns:
-        df["PLAYER_ID"] = None
-    if "PLAYER_NAME" not in df.columns:
-        df["PLAYER_NAME"] = ""
-    if "TEAM_ID" not in df.columns:
-        df["TEAM_ID"] = None
-
+    # Only return required columns
     return df[["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"]]
