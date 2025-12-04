@@ -1,49 +1,44 @@
 import pandas as pd
+import numpy as np
 
 
-def rank_safe_bets(df, models):
+def rank_safe_bets(models: dict, merged_df: pd.DataFrame, features_df: pd.DataFrame):
     """
-    Apply each model (points, assists, etc.) and produce a ranking score.
+    Run ML predictions + compute final risk score.
+    Returns ranked top bets.
     """
 
-    if df.empty:
+    if merged_df.empty or features_df.empty:
+        print("[RANKER] Empty dataset — skipping.")
         return pd.DataFrame()
 
-    output_rows = []
+    rows = []
 
-    for stat, model in models.items():
-        if stat not in ["points", "rebounds", "assists", "threes"]:
-            continue
-
-        if not hasattr(model, "predict_proba"):
-            continue
-
-        # Fill missing
-        features = df.select_dtypes(include=['number']).fillna(0)
-
-        if features.empty:
-            continue
-
+    for stat_name, model in models.items():
         try:
-            proba = model.predict_proba(features)[:, 1]
-        except Exception:
+            probs = model.predict_proba(features_df)[:, 1]
+        except Exception as e:
+            print(f"[RANKER ERROR] Model '{stat_name}' failed: {e}")
             continue
 
-        for idx, p in df.iterrows():
-            output_rows.append({
-                "player": f"{p['first_name']} {p['last_name']}",
-                "team": p.get("team"),
-                "stat": stat,
-                "model_prob": proba[idx],
-                "line": p.get("line", None),
-                "opponent": p.get("opponent", None)
+        for idx, prob in enumerate(probs):
+            rows.append({
+                "player": merged_df.iloc[idx]["first_name"] + " " + merged_df.iloc[idx]["last_name"],
+                "team": merged_df.iloc[idx].get("team"),
+                "opponent": merged_df.iloc[idx].get("opponent"),
+                "stat": stat_name,
+                "line": merged_df.iloc[idx].get("line"),
+                "final_prob": float(prob),
+                "safety_score": float(prob * 100)
             })
 
-    ranked = pd.DataFrame(output_rows)
+    df = pd.DataFrame(rows)
 
-    if ranked.empty:
-        return ranked
+    if df.empty:
+        print("[RANKER] No predictions created.")
+        return df
 
-    ranked["safety_score"] = ranked["model_prob"].rank(pct=True)
+    # Sort by safest → riskiest
+    df = df.sort_values("safety_score", ascending=False)
 
-    return ranked.sort_values("safety_score", ascending=False)
+    return df.head(25)
