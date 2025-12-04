@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # Correct import path for Streamlit Cloud
-from nba_safe_bets.daily_predict.daily_predict import daily_predict
+from daily_predict.daily_predict import daily_predict
 
 st.set_page_config(
     page_title="NBA Safe Bets - AI Prediction Engine",
