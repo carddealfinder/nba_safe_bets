@@ -1,151 +1,102 @@
 import pandas as pd
 import streamlit as st
 
+# Scrapers
 from nba_safe_bets.scrapers.nba_player_info import get_player_list
-from nba_safe_bets.scrapers.defense_rankings import get_all_defense_rankings
-from nba_safe_bets.scrapers.injury_report import get_injury_report
 from nba_safe_bets.scrapers.schedule_scraper import get_schedule
-from nba_safe_bets.scrapers.vegas_odds import get_daily_vegas_lines
+from nba_safe_bets.scrapers.injury_report import get_injury_report
+from nba_safe_bets.scrapers.defense_rankings import get_all_defense_rankings
 
-from nba_safe_bets.daily_predict.model_loader import load_all_models
+
+# Feature builder
 from nba_safe_bets.daily_predict.daily_feature_builder import build_features_for_player
-from nba_safe_bets.daily_predict.safe_bet_ranker import rank_safe_bets
+
+# Model loader
+from nba_safe_bets.daily_predict.model_loader import load_all_models
 
 
-# ---------------------------------------------------------
-# MAIN PREDICTION ENGINE
-# ---------------------------------------------------------
 def daily_predict():
-    print("\n================ DAILY_PREDICT START ================\n")
-    st.write("🔍 DEBUG: Entered daily_predict()")
 
-    # ---------------------------------------------------------
-    # 1. LOAD PLAYER LIST
-    # ---------------------------------------------------------
+    st.write("🔍 DEBUG: Starting Daily Prediction Engine")
+
+    # 1. Players
     players = get_player_list()
     st.write("Players DF Shape:", players.shape)
 
-    if players is None or players.empty:
-        st.error("❌ Player list is EMPTY — NBA API returned nothing")
+    if players.empty:
+        st.error("Player list is empty — cannot continue.")
         return pd.DataFrame()
 
-    if "PLAYER_ID" not in players.columns:
-        players["PLAYER_ID"] = range(len(players))
-
-    if "PLAYER_NAME" not in players.columns:
-        players["PLAYER_NAME"] = "Unknown"
-
-    # ---------------------------------------------------------
-    # 2. LOAD DEFENSE RANKINGS
-    # ---------------------------------------------------------
+    # 2. Defense
     defense = get_all_defense_rankings()
     st.write("Defense keys:", list(defense.keys()))
 
-    # ---------------------------------------------------------
-    # 3. LOAD INJURY REPORT
-    # ---------------------------------------------------------
+    # 3. Injuries
     injuries = get_injury_report()
-    if injuries is None or not isinstance(injuries, pd.DataFrame):
-        st.warning("⚠ Injury report invalid — using empty DF")
-        injuries = pd.DataFrame(columns=["PLAYER_ID", "STATUS"])
-
     st.write("Injury DF Shape:", injuries.shape)
 
-    # ---------------------------------------------------------
-    # 4. LOAD SCHEDULE
-    # ---------------------------------------------------------
+    # 4. Schedule
     schedule = get_schedule()
-
-    if schedule is None:
-        st.warning("⚠ Schedule returned None — converting to empty DF")
-        schedule = pd.DataFrame()
-
-    elif not isinstance(schedule, pd.DataFrame):
-        st.warning(f"⚠ Schedule type = {type(schedule)} — converting")
-        try:
-            schedule = pd.DataFrame(schedule)
-        except:
-            schedule = pd.DataFrame()
-
     st.write("Schedule DF Shape:", schedule.shape)
 
-    # ---------------------------------------------------------
-    # 5. LOAD VEGAS ODDS
-    # ---------------------------------------------------------
+    # 5. Vegas odds
     vegas = get_daily_vegas_lines()
-
-    if vegas is None or not isinstance(vegas, pd.DataFrame):
-        st.warning("⚠ Vegas odds invalid — using empty DF")
-        vegas = pd.DataFrame(columns=["game", "line", "total"])
-
+    if isinstance(vegas, list):
+        vegas = pd.DataFrame(vegas)
     st.write("Vegas DF Shape:", vegas.shape)
 
-    # ---------------------------------------------------------
-    # 6. LOAD MODELS
-    # ---------------------------------------------------------
+    # 6. Load ML models
     models = load_all_models()
     st.write("Models Loaded:", list(models.keys()))
 
-    # ---------------------------------------------------------
-    # 7. GENERATE PREDICTIONS
-    # ---------------------------------------------------------
+    # If no models exist → we fallback to baseline scoring
+    use_models = len(models) > 0
+
+    # ============================================================================
+    # 7. Generate Feature Rows
+    # ============================================================================
+    feature_rows = []
+
+    for _, row in players.iterrows():
+        f = build_features_for_player(row, defense, injuries, schedule)
+        feature_rows.append(f)
+
+    feature_df = pd.concat(feature_rows, ignore_index=True)
+    st.write("Feature DF Shape:", feature_df.shape)
+
+    # ============================================================================
+    # 8. Make Predictions
+    # ============================================================================
+
     results = []
 
-    st.write("🔧 Generating predictions...")
+    for _, f_row in feature_df.iterrows():
 
-    for idx, row in players.iterrows():
+        # For REAL models
+        if use_models:
+            pred_points = models["points_model"].predict([[f_row["recent_points_avg"]]])[0]
+            pred_reb = models["rebounds_model"].predict([[f_row["recent_rebounds_avg"]]])[0]
+            pred_ast = models["assists_model"].predict([[f_row["recent_assists_avg"]]])[0]
+            pred_3pt = models["threes_model"].predict([[f_row["recent_threes_avg"]]])[0]
+        else:
+            # Synthetic probabilities until real models are trained
+            pred_points = f_row["recent_points_avg"] / 30
+            pred_reb = f_row["recent_rebounds_avg"] / 15
+            pred_ast = f_row["recent_assists_avg"] / 12
+            pred_3pt = f_row["recent_threes_avg"] / 8
 
-        pid = row.get("PLAYER_ID")
-        if pid is None:
-            continue
+        # Add predictions
+        results.append({
+            "player": f_row["PLAYER_ID"],
+            "stat": "points",
+            "line": 20.5,
+            "final_prob": pred_points,
+            "ml_prob": pred_points * 0.9,
+            "weighted_prob": pred_points * 0.8,
+            "safety_score": pred_points * 100,
+        })
 
-        try:
-            features = build_features_for_player(
-                player_row=row,
-                defense=defense,
-                injuries=injuries,
-                schedule=schedule,
-                vegas=vegas
-            )
+    result_df = pd.DataFrame(results)
+    st.write("Final Prediction DF Head:", result_df.head())
 
-            if features is None or not isinstance(features, pd.DataFrame) or features.empty:
-                continue
-
-            prediction_row = {
-                "PLAYER_ID": pid,
-                "PLAYER_NAME": row.get("PLAYER_NAME", "Unknown"),
-                "TEAM_ID": row.get("TEAM_ID"),
-            }
-
-            for stat_name, model in models.items():
-                try:
-                    prediction_row[stat_name] = model.predict(features)[0]
-                except Exception as e:
-                    print(f"Model failure for {stat_name}: {e}")
-                    prediction_row[stat_name] = None
-
-            results.append(prediction_row)
-
-        except Exception as e:
-            print(f"Player error {pid}: {e}")
-            continue
-
-    # ---------------------------------------------------------
-    # 8. BUILD PREDICTION DATAFRAME
-    # ---------------------------------------------------------
-    if not results:
-        st.warning("⚠ No predictions generated.")
-        return pd.DataFrame()
-
-    predictions_df = pd.DataFrame(results)
-    st.write("Final Prediction DF:", predictions_df.head())
-
-    # ---------------------------------------------------------
-    # 9. RANK SAFEST BETS
-    # ---------------------------------------------------------
-    ranked = rank_safe_bets(predictions_df)
-    st.write("Ranked bets:", ranked.head() if not ranked.empty else "empty")
-
-    print("\n================ DAILY_PREDICT END ================\n")
-
-    return ranked
+    return result_df.sort_values("safety_score", ascending=False).head(25)

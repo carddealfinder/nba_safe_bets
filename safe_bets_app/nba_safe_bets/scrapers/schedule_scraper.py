@@ -1,37 +1,26 @@
 import requests
 import pandas as pd
-from datetime import date
+from datetime import datetime
 
-BASE = "https://api.balldontlie.io/v1"
+BASE_URL = "https://api.balldontlie.io/v1"
 
+def get_schedule(date=None):
+    """Returns today's NBA games from BallDontLie."""
+    if date is None:
+        date = datetime.today().strftime("%Y-%m-%d")
 
-def get_schedule():
-    """Loads today's NBA games."""
-    today = date.today().isoformat()
-    url = f"{BASE}/games?dates[]={today}&per_page=100"
+    url = f"{BASE_URL}/games"
+    params = {"dates[]": date, "per_page": 100}
 
-    print("🔍 Fetching schedule from BallDontLie:", today)
-
-    r = requests.get(url)
-
+    r = requests.get(url, params=params, timeout=10)
     if r.status_code != 200:
-        print("[ERROR] schedule API:", r.text)
+        print("[ERROR] Failed to fetch schedule:", r.text)
         return pd.DataFrame()
 
-    games = r.json()["data"]
-
+    games = r.json().get("data", [])
     if not games:
-        print("[WARNING] No NBA games today.")
+        print("⚠ No games returned for date:", date)
         return pd.DataFrame()
 
-    rows = []
-    for g in games:
-        rows.append({
-            "game_id": g["id"],
-            "home_team": g["home_team"]["full_name"],
-            "visitor_team": g["visitor_team"]["full_name"],
-            "home_team_id": g["home_team"]["id"],
-            "visitor_team_id": g["visitor_team"]["id"],
-        })
-
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(games)
+    return df[["id", "home_team", "visitor_team"]]

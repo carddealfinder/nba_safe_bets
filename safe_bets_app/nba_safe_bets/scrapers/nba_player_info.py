@@ -1,32 +1,24 @@
 import requests
 import pandas as pd
 
-
-BASE = "https://api.balldontlie.io/v1"
-HEADERS = {"Authorization": ""}  # optional free tier key
-
+BASE_URL = "https://api.balldontlie.io/v1"
+HEADERS = {"Accept": "application/json"}
 
 def get_player_list():
-    """
-    Loads ALL active + inactive players from BallDontLie.
-    BallDontLie returns paginated results, so we loop.
-    """
-
-    print("🔍 Using BallDontLie API for players...")
-
+    """Returns all NBA players (first 500) from BallDontLie."""
     players = []
     page = 1
 
     while True:
-        url = f"{BASE}/players?page={page}&per_page=100"
-        r = requests.get(url, headers=HEADERS)
+        url = f"{BASE_URL}/players"
+        params = {"per_page": 100, "page": page}
 
+        r = requests.get(url, params=params, headers=HEADERS, timeout=10)
         if r.status_code != 200:
-            print("[ERROR] Player API failed:", r.text)
+            print("[ERROR] Failed to fetch players:", r.text)
             break
 
         data = r.json()
-
         players.extend(data["data"])
 
         if page >= data["meta"]["total_pages"]:
@@ -35,11 +27,18 @@ def get_player_list():
         page += 1
 
     if not players:
-        print("[ERROR] No player data returned.")
+        print("❌ No player data returned from BallDontLie API")
         return pd.DataFrame()
 
     df = pd.DataFrame(players)
+    df = df.rename(columns={
+        "id": "PLAYER_ID",
+        "first_name": "first_name",
+        "last_name": "last_name",
+        "team": "team"
+    })
 
-    return df[["id", "first_name", "last_name", "team"]].rename(
-        columns={"id": "PLAYER_ID"}
-    )
+    df["PLAYER_NAME"] = df["first_name"] + " " + df["last_name"]
+    df["TEAM_ID"] = df["team"].apply(lambda x: x.get("abbreviation") if isinstance(x, dict) else None)
+
+    return df[["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"]]
