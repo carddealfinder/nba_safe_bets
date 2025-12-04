@@ -1,58 +1,86 @@
 import pandas as pd
 
-URLS = {
-    "points": "https://www.fantasypros.com/nba/defense-vs-position.php",
-    "rebounds": "https://www.fantasypros.com/nba/defense-vs-position-reb.php",
-    "assists": "https://www.fantasypros.com/nba/defense-vs-position-ast.php",
-    "threes": "https://www.fantasypros.com/nba/defense-vs-position-3pm.php"
-}
+# ----------------------------------------------------------------------
+# Team Defense Ranking Extractor
+# ----------------------------------------------------------------------
+def compute_defense_rankings(def_stats_df):
+    """
+    Accepts a DataFrame of team defensive stats from Balldontlie-like structure:
+    Columns expected: team, opp_pts, opp_ast, opp_reb, opp_fg3m
+    Returns rank tables for each category.
+    """
+    if def_stats_df is None or def_stats_df.empty:
+        return {
+            "points": None,
+            "assists": None,
+            "rebounds": None,
+            "threes": None
+        }
+
+    ranks = {}
+
+    ranks["points"]   = def_stats_df.sort_values("opp_pts").reset_index(drop=True)
+    ranks["assists"]  = def_stats_df.sort_values("opp_ast").reset_index(drop=True)
+    ranks["rebounds"] = def_stats_df.sort_values("opp_reb").reset_index(drop=True)
+    ranks["threes"]   = def_stats_df.sort_values("opp_fg3m").reset_index(drop=True)
+
+    # Add rank number
+    for key, df in ranks.items():
+        df["rank"] = df.index + 1
+
+    return ranks
 
 
-def safe_empty(stat_type):
-    """Return an empty, correctly-shaped DataFrame."""
-    return pd.DataFrame(columns=["Position", "Team", stat_type])
+# ----------------------------------------------------------------------
+# Game Pace Rating
+# ----------------------------------------------------------------------
+def compute_pace_rating(team_pace_df, team_name):
+    """
+    Returns the pace score (possessions per game) for a team.
+    """
+    if team_pace_df is None or team_pace_df.empty:
+        return None
+
+    row = team_pace_df[team_pace_df["team"] == team_name]
+    if row.empty:
+        return None
+
+    return float(row.iloc[0]["pace"])
 
 
-def fetch_defense_table(stat_type):
-    url = URLS[stat_type]
+# ----------------------------------------------------------------------
+# Projected Possessions (simple possession formula)
+# ----------------------------------------------------------------------
+def estimate_possessions(team1_pace, team2_pace):
+    """
+    Simple average pace model.
+    """
+    if team1_pace is None or team2_pace is None:
+        return None
 
-    # Try reading HTML safely
-    try:
-        tables = pd.read_html(url)
-    except Exception as e:
-        print(f"[ERROR] Unable to read HTML for {stat_type}: {e}")
-        return safe_empty(stat_type)
-
-    # Ensure table list exists
-    if not isinstance(tables, list) or len(tables) == 0:
-        print(f"[ERROR] No HTML tables found for {stat_type}")
-        return safe_empty(stat_type)
-
-    df = tables[0]
-
-    # Ensure df is a DataFrame
-    if not isinstance(df, pd.DataFrame):
-        print(f"[ERROR] First table for {stat_type} is not a DataFrame")
-        return safe_empty(stat_type)
-
-    # Ensure at least 3 columns
-    if df.shape[1] < 3:
-        print(f"[ERROR] Table for {stat_type} has too few columns: {df.shape}")
-        return safe_empty(stat_type)
-
-    # Trim to first 3 columns only (FantasyPros sometimes adds extra)
-    try:
-        df = df.iloc[:, :3]
-        df.columns = ["Position", "Team", stat_type]
-    except Exception as e:
-        print(f"[ERROR] Failed to clean/rename table for {stat_type}: {e}")
-        return safe_empty(stat_type)
-
-    return df
+    return round((team1_pace + team2_pace) / 2, 1)
 
 
-def get_all_defense_rankings():
-    dfs = {}
-    for stat in URLS:
-        dfs[stat] = fetch_defense_table(stat)
-    return dfs
+# ----------------------------------------------------------------------
+# Usage Boost Estimator
+# ----------------------------------------------------------------------
+def estimate_usage_boost(injury_df, player_team):
+    """
+    Rough heuristic:
+    If multiple starters on the player's team are OUT,
+    usage goes up slightly.
+    """
+    if injury_df is None or injury_df.empty:
+        return 0.0
+
+    injured = injury_df[(injury_df["team"] == player_team) & (injury_df["status"] == "Out")]
+
+    if injured.empty:
+        return 0.0
+
+    count = len(injured)
+
+    # Basic rule-of-thumb scaling
+    boost = min(0.02 * count, 0.10)  # Max +10% usage
+
+    return round(boost, 3)

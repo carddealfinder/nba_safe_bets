@@ -2,58 +2,63 @@ import os
 import requests
 import pandas as pd
 
-# Debug print to verify Streamlit Cloud sees the secret
-print("🔍 DEBUG: BALDONTLIE_API_KEY from env:", os.getenv("BALDONTLIE_API_KEY"))
-
-API_KEY = os.getenv("BALDONTLIE_API_KEY")
 BASE_URL = "https://api.balldontlie.io/v1/players"
 
 
 def get_player_list(per_page=100):
-    """Fetches full NBA player list from BallDontLie API."""
-    
-    if not API_KEY:
-        print("[BDL ERROR] Missing BALDONTLIE_API_KEY")
+    """Fetch ALL players from Balldontlie using proper pagination."""
+
+    api_key = os.getenv("BALDONTLIE_API_KEY")
+
+    if not api_key:
+        print("[BDL ERROR] No BALDONTLIE_API_KEY environment variable found.")
         return pd.DataFrame()
 
+    # Balldontlie uses query param ?key=API_KEY
+    headers = {}  # No Authorization header
     players = []
     page = 1
+
+    print("[BDL] Starting player download...")
 
     while True:
         print(f"[BDL] Fetching page {page}")
 
+        params = {
+            "page": page,
+            "per_page": per_page,
+            "key": api_key   # ← THIS IS THE FIX
+        }
+
         try:
-            resp = requests.get(
-                BASE_URL,
-                params={"page": page, "per_page": per_page},
-                headers={"Authorization": API_KEY},
-                timeout=10,
-            )
-            resp.raise_for_status()
+            r = requests.get(BASE_URL, params=params, headers=headers, timeout=10)
+            r.raise_for_status()
         except Exception as e:
-            print(f"[BDL ERROR] Player request failed: {e}")
+            print(f"[BDL ERROR] Player API request failed: {e}")
             break
 
-        data = resp.json()
+        data = r.json()
 
+        # Extract players
         if "data" not in data or len(data["data"]) == 0:
+            print("[BDL] No more player data found.")
             break
 
-        players.extend(data["data"])
+        for p in data["data"]:
+            players.append({
+                "id": p["id"],
+                "first_name": p["first_name"],
+                "last_name": p["last_name"],
+                "team": p["team"]["full_name"] if p["team"] else None
+            })
+
+        # Pagination flag
+        meta = data.get("meta", {})
+        if not meta.get("has_more", False):
+            break
+
         page += 1
 
-        if page > data.get("meta", {}).get("total_pages", 1):
-            break
-
-    if not players:
-        print("[BDL] Loaded players: (0,0)")
-        return pd.DataFrame()
-
     df = pd.DataFrame(players)
-
-    df = df[["id", "first_name", "last_name", "team"]]
-    df["team"] = df["team"].apply(lambda t: t.get("full_name") if isinstance(t, dict) else None)
-
     print(f"[BDL] Loaded players: {df.shape}")
-
     return df

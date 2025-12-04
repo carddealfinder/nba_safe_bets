@@ -1,53 +1,36 @@
 import pandas as pd
-import numpy as np
 
-"""
-This module builds a simple feature set for every player.
-Later you can replace synthetic stats with real API game logs.
-"""
+SUPPORTED_STATS = [
+    "points",
+    "rebounds",
+    "assists",
+    "threes",
+    "points_rebounds",
+    "points_assists",
+    "rebounds_assists",
+    "pra"
+]
 
 
-def build_features_for_player(player_row, defense_rankings, injuries, schedule):
+def build_features(player_row, matchup, injuries):
     """
-    Given a player, return a row of features the model can use.
-
-    player_row = row from the players DataFrame
-
-    Returns synthetic but realistic stats so the prediction engine
-    can run end-to-end without errors.
+    Build the feature vector for models.
+    This is intentionally simple — you can add more features later.
     """
 
-    player_id = player_row["PLAYER_ID"]
-    team = player_row["team"]
-    team_name = None
-
-    if isinstance(team, dict):
-        team_name = team.get("full_name")
-    else:
-        team_name = None
-
-    # --- Synthetic baseline inputs ---
     features = {
-        "PLAYER_ID": player_id,
-        "team_name": team_name,
-        "recent_points_avg": np.random.uniform(8, 28),
-        "recent_rebounds_avg": np.random.uniform(2, 12),
-        "recent_assists_avg": np.random.uniform(1, 9),
-        "recent_threes_avg": np.random.uniform(0, 4),
+        "player_id": player_row.get("player_id", None),
+        "opponent_def_rating": matchup.get("def_rating", 0),
+        "minutes_last_5": player_row.get("minutes_5", 0),
+        "usage_rate": player_row.get("usage", 0),
+        "injury_flag": injuries.get(player_row.get("player_id"), 0)
     }
-
-    # --- Add defense ranking if available ---
-    if defense_rankings and "points" in defense_rankings:
-        features["opp_def_points"] = np.random.uniform(102, 118)
-    else:
-        features["opp_def_points"] = 110.0
-
-    # --- Injury flag ---
-    injured = injuries[injuries["player_id"] == player_id]
-    features["is_injured"] = 1 if len(injured) > 0 else 0
-
-    # --- Game availability ---
-    features["has_game_today"] = 1 if not schedule.empty else 0
 
     return pd.DataFrame([features])
 
+
+def attach_stat_line(df_props):
+    """
+    For DK props, only keep stats we support.
+    """
+    return df_props[df_props["stat"].isin(SUPPORTED_STATS)].reset_index(drop=True)

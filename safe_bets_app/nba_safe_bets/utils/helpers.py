@@ -1,29 +1,128 @@
+import re
 import pandas as pd
-import numpy as np
 
-def safe_merge(left, right, left_on, right_on=None, how="left"):
+
+# ---------------------------------------------------------
+# SAFE NUMBER PARSING
+# ---------------------------------------------------------
+def try_float(x, default=None):
+    """Convert value to float safely."""
+    try:
+        return float(x)
+    except:
+        return default
+
+
+# ---------------------------------------------------------
+# AMERICAN ODDS → IMPLIED PROBABILITY
+# ---------------------------------------------------------
+def american_to_probability(odds):
     """
-    Wrapper around merge that avoids column overlap errors and logs issues.
+    Converts American odds (-110, +140, etc) to implied probability.
+    Returns a float between 0 and 1.
     """
-    if right_on is None:
-        right_on = left_on
+    try:
+        odds = float(odds)
+    except:
+        return None
 
-    # Remove duplicate columns before merge
-    common_cols = set(left.columns).intersection(set(right.columns))
-    common_cols -= set([left_on, right_on])
+    # negative odds (favorite)
+    if odds < 0:
+        return (-odds) / ((-odds) + 100)
 
-    right = right.drop(columns=list(common_cols), errors="ignore")
-
-    merged = left.merge(right, how=how, left_on=left_on, right_on=right_on)
-    return merged
+    # positive odds (underdog)
+    return 100 / (odds + 100)
 
 
-def normalize_column(df, col):
+# ---------------------------------------------------------
+# PLAYER NAME CLEANING & STANDARDIZATION
+# ---------------------------------------------------------
+def normalize_name(name: str):
     """
-    Normalizes a column to 0-1 range.
+    Clean up player names to maintain consistency across scrapers.
     """
-    if df[col].max() == df[col].min():
-        df[col] = 0
+    if not isinstance(name, str):
+        return name
+
+    # Remove extra spaces, punctuation
+    name = name.strip()
+    name = re.sub(r"\s+", " ", name)
+
+    # Title case
+    return name.title()
+
+
+# ---------------------------------------------------------
+# MERGE SAFE (avoid crashes)
+# ---------------------------------------------------------
+def safe_merge(left: pd.DataFrame, right: pd.DataFrame, on: str, how="left"):
+    """
+    Merge two DataFrames safely—if right is empty, returns left unchanged.
+    """
+    if right is None or len(right) == 0:
+        return left.copy()
+
+    return left.merge(right, on=on, how=how)
+
+
+# ---------------------------------------------------------
+# NORMALIZE STAT KEYS
+# ---------------------------------------------------------
+STAT_KEY_MAP = {
+    "pts": "points",
+    "points": "points",
+    "reb": "rebounds",
+    "rebs": "rebounds",
+    "rebounds": "rebounds",
+    "ast": "assists",
+    "assists": "assists",
+    "3pt": "threes",
+    "3pm": "threes",
+    "threes": "threes",
+    "three_pointers_made": "threes",
+}
+
+
+def normalize_stat_key(stat: str):
+    """
+    Convert multiple stat label versions to the expected unified keys.
+    Example:
+        "pts" → "points"
+        "3PM" → "threes"
+    """
+    if stat is None:
+        return None
+
+    stat_lower = str(stat).strip().lower()
+    return STAT_KEY_MAP.get(stat_lower, stat_lower)
+
+
+# ---------------------------------------------------------
+# PRETTY PRINTING & DEBUG UTILITIES
+# ---------------------------------------------------------
+def debug_df(df: pd.DataFrame, name: str):
+    """
+    Print DataFrame shape and head for debugging.
+    """
+    print(f"\n--- DEBUG: {name} ---")
+    if df is None:
+        print("❌ DataFrame is NONE")
+        return
+
+    print("Shape:", df.shape)
+    if df.shape[0] > 0:
+        print(df.head())
     else:
-        df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min())
-    return df
+        print("⚠️ DataFrame is EMPTY")
+
+
+# ---------------------------------------------------------
+# NORMALIZE PLAYER IDs (DraftKings uses DK IDs; BDL uses numeric)
+# ---------------------------------------------------------
+def normalize_player_id(pid):
+    """
+    Convert any player ID into a consistent string key.
+    """
+    if pid is None:
+        return None
+    return str(pid).strip()

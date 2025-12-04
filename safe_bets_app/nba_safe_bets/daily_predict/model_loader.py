@@ -1,25 +1,50 @@
 import os
 import pickle
 
-def load_all_models():
-    model_dir = os.path.join(os.path.dirname(__file__), "..", "models", "trained")
-    model_dir = os.path.abspath(model_dir)
+SUPPORTED_STATS = [
+    "points",
+    "rebounds",
+    "assists",
+    "threes",
+    "points_rebounds",
+    "points_assists",
+    "rebounds_assists",
+    "pra"
+]
 
-    print("🔍 Looking for models in:", model_dir)
+MODEL_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..", "..", "models", "trained"
+)
 
+def load_models():
     models = {}
-    if not os.path.exists(model_dir):
-        print("[ERROR] Model dir missing:", model_dir)
-        return models
 
-    for f in os.listdir(model_dir):
-        if f.endswith(".pkl"):
-            name = f.replace(".pkl", "")
-            try:
-                with open(os.path.join(model_dir, f), "rb") as h:
-                    models[name] = pickle.load(h)
-            except Exception as e:
-                print("Model failed:", f, e)
+    for stat in SUPPORTED_STATS:
+        path = os.path.join(MODEL_DIR, f"{stat}_model.pkl")
 
-    print("Loaded models:", list(models.keys()))
+        if not os.path.exists(path):
+            print(f"[WARNING] No model found for {stat} — using dummy probability model.")
+            models[stat] = DummyModel()
+            continue
+
+        try:
+            with open(path, "rb") as f:
+                models[stat] = pickle.load(f)
+            print(f"Loaded: {stat}_model.pkl")
+
+        except Exception as e:
+            print(f"[ERROR] Failed loading model for {stat}: {e}")
+            models[stat] = DummyModel()
+
     return models
+
+
+# -----------------------
+# Dummy fallback model
+# -----------------------
+class DummyModel:
+    def predict_proba(self, X):
+        # Always return 0.5 probability — neutral baseline
+        import numpy as np
+        return np.array([[0.5, 0.5] for _ in range(len(X))])

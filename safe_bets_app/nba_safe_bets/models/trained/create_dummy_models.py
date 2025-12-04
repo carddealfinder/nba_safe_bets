@@ -1,24 +1,56 @@
 import os
-import joblib
-from sklearn.dummy import DummyRegressor
+import pickle
 import numpy as np
+from sklearn.linear_model import LogisticRegression
 
-MODEL_NAMES = ["points", "rebounds", "assists", "threes"]
+# -----------------------------------------------------------
+# 11 PROP TYPES SUPPORTED
+# -----------------------------------------------------------
+PROP_LIST = [
+    "points",
+    "rebounds",
+    "assists",
+    "threes",
+    "blocks",
+    "steals",
+    "pra",
+    "pr",
+    "ra",
+    "pts_reb_ast",
+    "fantasy_score"
+]
 
-def ensure_dir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
+def create_synthetic_model():
+    """
+    Creates a LOGISTIC REGRESSION model trained on synthetic data.
+    Produces realistic-looking probabilities between 0.45–0.65.
+    """
+    X = np.random.rand(300, 6)
+    y = np.random.randint(0, 2, 300)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ensure_dir(BASE_DIR)
+    model = LogisticRegression()
+    model.fit(X, y)
 
-print("Saving dummy models to:", BASE_DIR)
+    return model
 
-for name in MODEL_NAMES:
-    model = DummyRegressor(strategy="mean")
-    model.fit(np.array([[1], [2], [3]]), np.array([5, 5, 5]))  # Always predicts 5
 
-    out_path = os.path.join(BASE_DIR, f"{name}_model.pkl")
-    joblib.dump(model, out_path)
+def save_all_models():
+    here = os.path.dirname(__file__)
+    model_dir = here  # already IN "trained/"
 
-    print(f"Created: {out_path}")
+    print(f"Saving dummy models to: {model_dir}")
+
+    for prop in PROP_LIST:
+        model = create_synthetic_model()
+        filename = os.path.join(model_dir, f"{prop}_model.pkl")
+
+        with open(filename, "wb") as f:
+            pickle.dump(model, f)
+
+        print(f"✔ Saved: {filename}")
+
+    print("\n🎉 ALL 11 MODELS CREATED SUCCESSFULLY!\n")
+
+
+if __name__ == "__main__":
+    save_all_models()
