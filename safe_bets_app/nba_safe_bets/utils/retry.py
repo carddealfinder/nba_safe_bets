@@ -1,20 +1,16 @@
 import time
 import requests
-from nba_safe_bets.utils.logging_config import log
+from .logging_config import log
+
 
 def safe_request(url, params=None, headers=None, retries=3, delay=1):
-    """Retry API requests with delay to avoid failures."""
-    for attempt in range(retries):
+    for attempt in range(1, retries + 1):
         try:
             response = requests.get(url, params=params, headers=headers, timeout=10)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                log(f"[REQUEST ERROR] {url} -> {response.status_code}")
+            response.raise_for_status()
+            return response
         except Exception as e:
-            log(f"[EXCEPTION] {e}")
-
-        time.sleep(delay)
-
-    log(f"[FAILED AFTER RETRIES] {url}")
+            log(f"[safe_request] Attempt {attempt} failed: {e}")
+            if attempt < retries:
+                time.sleep(delay)
     return None
