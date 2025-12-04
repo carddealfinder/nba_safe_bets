@@ -1,15 +1,13 @@
 import sys
 import os
 
-# Determine the project root (one level above /dashboard)
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Get the absolute path of the project root (two levels up)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 
-# Add project root to sys.path for imports
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
-
-import streamlit as st
-import pandas as pd
+# Add to sys.path if not already there
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from daily_predict.daily_predict import daily_predict
 from dashboard.components.bet_table import render_bet_table
