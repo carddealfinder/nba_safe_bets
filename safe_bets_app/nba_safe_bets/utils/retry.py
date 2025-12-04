@@ -1,6 +1,6 @@
 import time
 import requests
-from nba_safe_bets.utils.logging_config import log   # ✅ FIXED IMPORT
+from nba_safe_bets.utils.logging_config import log
 
 def safe_request(url, params=None, headers=None, retries=3, delay=1):
     """Retry API requests with delay to avoid failures."""

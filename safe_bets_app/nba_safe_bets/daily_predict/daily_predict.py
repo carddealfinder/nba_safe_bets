@@ -13,86 +13,85 @@ from nba_safe_bets.daily_predict.safe_bet_ranker import rank_safe_bets
 
 
 # ---------------------------------------------------------
-# MAIN DAILY ENGINE
+# MAIN PREDICTION ENGINE
 # ---------------------------------------------------------
 def daily_predict():
-    print("🔍 DEBUG: Starting Daily Prediction Engine")
+    print("\n================ DAILY_PREDICT START ================\n")
+    st.write("🔍 DEBUG: Entered daily_predict()")
 
     # ---------------------------------------------------------
-    # 1. Load player list
+    # 1. LOAD PLAYER LIST
     # ---------------------------------------------------------
     players = get_player_list()
-
-    print("Players DF Shape:", players.shape)
+    st.write("Players DF Shape:", players.shape)
 
     if players is None or players.empty:
-        print("❌ Player list EMPTY — NBA API returned no data")
-        return []
+        st.error("❌ Player list is EMPTY — NBA API returned nothing")
+        return pd.DataFrame()
 
-    # Guarantee schema consistency
     if "PLAYER_ID" not in players.columns:
-        print("⚠️ PLAYER_ID missing — generating fallback IDs")
         players["PLAYER_ID"] = range(len(players))
 
     if "PLAYER_NAME" not in players.columns:
-        players["PLAYER_NAME"] = "Unknown Player"
+        players["PLAYER_NAME"] = "Unknown"
 
     # ---------------------------------------------------------
-    # 2. Load defense rankings
+    # 2. LOAD DEFENSE RANKINGS
     # ---------------------------------------------------------
     defense = get_all_defense_rankings()
-    print("Defense keys:", list(defense.keys()))
+    st.write("Defense keys:", list(defense.keys()))
 
     # ---------------------------------------------------------
-    # 3. Load injuries
+    # 3. LOAD INJURY REPORT
     # ---------------------------------------------------------
     injuries = get_injury_report()
     if injuries is None or not isinstance(injuries, pd.DataFrame):
-        print("⚠️ Injury report invalid — using empty DataFrame")
-        injuries = pd.DataFrame(columns=["PLAYER_ID", "INJURY", "STATUS"])
+        st.warning("⚠ Injury report invalid — using empty DF")
+        injuries = pd.DataFrame(columns=["PLAYER_ID", "STATUS"])
 
-    print("Injury DF Shape:", injuries.shape)
+    st.write("Injury DF Shape:", injuries.shape)
 
     # ---------------------------------------------------------
-    # 4. Load schedule (back-to-back, travel, opponent)
+    # 4. LOAD SCHEDULE
     # ---------------------------------------------------------
     schedule = get_schedule()
 
     if schedule is None:
-        print("⚠️ Schedule scraper returned None — using empty DataFrame")
+        st.warning("⚠ Schedule returned None — converting to empty DF")
         schedule = pd.DataFrame()
 
     elif not isinstance(schedule, pd.DataFrame):
-        print(f"⚠️ Schedule type invalid ({type(schedule)}). Converting to DataFrame...")
+        st.warning(f"⚠ Schedule type = {type(schedule)} — converting")
         try:
             schedule = pd.DataFrame(schedule)
-        except Exception:
+        except:
             schedule = pd.DataFrame()
 
-    print("Schedule DF Shape:", schedule.shape)
+    st.write("Schedule DF Shape:", schedule.shape)
 
     # ---------------------------------------------------------
-    # 5. Load Vegas odds
+    # 5. LOAD VEGAS ODDS
     # ---------------------------------------------------------
     vegas = get_daily_vegas_lines()
 
     if vegas is None or not isinstance(vegas, pd.DataFrame):
-        print("⚠️ Vegas odds invalid — using empty DataFrame")
+        st.warning("⚠ Vegas odds invalid — using empty DF")
         vegas = pd.DataFrame(columns=["game", "line", "total"])
 
-    print("Vegas DF Shape:", vegas.shape)
+    st.write("Vegas DF Shape:", vegas.shape)
 
     # ---------------------------------------------------------
-    # 6. Load trained ML models
+    # 6. LOAD MODELS
     # ---------------------------------------------------------
     models = load_all_models()
-    print("Models loaded:", list(models.keys()))
+    st.write("Models Loaded:", list(models.keys()))
 
     # ---------------------------------------------------------
-    # 7. Generate predictions for every player
+    # 7. GENERATE PREDICTIONS
     # ---------------------------------------------------------
     results = []
-    print("🔧 Generating predictions...")
+
+    st.write("🔧 Generating predictions...")
 
     for idx, row in players.iterrows():
 
@@ -109,45 +108,44 @@ def daily_predict():
                 vegas=vegas
             )
 
-            # Skip if no features were built
             if features is None or not isinstance(features, pd.DataFrame) or features.empty:
                 continue
 
             prediction_row = {
                 "PLAYER_ID": pid,
                 "PLAYER_NAME": row.get("PLAYER_NAME", "Unknown"),
-                "TEAM_ID": row.get("TEAM_ID", None),
+                "TEAM_ID": row.get("TEAM_ID"),
             }
 
-            # Apply ML models
             for stat_name, model in models.items():
                 try:
                     prediction_row[stat_name] = model.predict(features)[0]
                 except Exception as e:
-                    print(f"⚠️ Model failed for {stat_name}: {e}")
+                    print(f"Model failure for {stat_name}: {e}")
                     prediction_row[stat_name] = None
 
             results.append(prediction_row)
 
         except Exception as e:
-            print(f"❌ Error processing player {pid}: {e}")
+            print(f"Player error {pid}: {e}")
             continue
 
     # ---------------------------------------------------------
-    # 8. Convert to DataFrame
+    # 8. BUILD PREDICTION DATAFRAME
     # ---------------------------------------------------------
     if not results:
-        print("⚠️ No predictions generated.")
-        return []
+        st.warning("⚠ No predictions generated.")
+        return pd.DataFrame()
 
     predictions_df = pd.DataFrame(results)
-    print("Final Prediction DF Head:")
-    print(predictions_df.head())
+    st.write("Final Prediction DF:", predictions_df.head())
 
     # ---------------------------------------------------------
-    # 9. Compute safest bet rankings
+    # 9. RANK SAFEST BETS
     # ---------------------------------------------------------
     ranked = rank_safe_bets(predictions_df)
+    st.write("Ranked bets:", ranked.head() if not ranked.empty else "empty")
 
-    print("🏆 Ranking complete!")
+    print("\n================ DAILY_PREDICT END ================\n")
+
     return ranked
