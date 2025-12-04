@@ -1,3 +1,11 @@
+import sys
+import os
+
+# Ensure safe_bets_app is in PYTHONPATH
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(BASE_DIR)
+sys.path.append(PARENT_DIR)
+
 import sys, os
 import streamlit as st
 import pandas as pd
