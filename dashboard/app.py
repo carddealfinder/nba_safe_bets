@@ -1,3 +1,13 @@
+import sys
+import os
+
+# Determine the project root (one level above /dashboard)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Add project root to sys.path for imports
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
 import streamlit as st
 import pandas as pd
 
