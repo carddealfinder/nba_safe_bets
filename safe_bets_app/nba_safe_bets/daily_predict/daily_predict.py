@@ -4,7 +4,7 @@ from ..scrapers.injury_report import get_injury_report
 from ..scrapers.defense_rankings import get_defense_rankings
 from ..scrapers.DraftKings_scraper import get_draftkings_odds
 
-from ..models.model_loader import load_models
+from .model_loader import load_models
 from .safe_bet_ranker import rank_safe_bets
 
 # --- Models & Ranking ---
