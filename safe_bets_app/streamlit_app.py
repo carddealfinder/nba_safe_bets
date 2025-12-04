@@ -3,12 +3,12 @@ import pandas as pd
 import traceback
 
 # -------------------------------------------------------------------
-# Correct absolute imports based on your repo structure
+# Correct imports for Streamlit Cloud
 # -------------------------------------------------------------------
-from safe_bets_app.nba_safe_bets.daily_predict.daily_predict import daily_predict
-from safe_bets_app.nba_safe_bets.dashboard.components.bet_table import render_bet_table
-from safe_bets_app.nba_safe_bets.dashboard.components.player_card import render_player_card
-from safe_bets_app.nba_safe_bets.dashboard.components.charts import render_charts
+from nba_safe_bets.daily_predict.daily_predict import daily_predict
+from nba_safe_bets.dashboard.components.bet_table import render_bet_table
+from nba_safe_bets.dashboard.components.player_card import render_player_card
+from nba_safe_bets.dashboard.components.charts import render_charts
 
 
 # -------------------------------------------------------------------
@@ -17,7 +17,6 @@ from safe_bets_app.nba_safe_bets.dashboard.components.charts import render_chart
 debug_logs = []
 
 def log_debug(msg: str):
-    """Append a debug message into the UI log buffer."""
     debug_logs.append(msg)
 
 
@@ -54,23 +53,23 @@ except Exception as e:
 
 
 # -------------------------------------------------------------------
-# DEBUG LOG VISIBILITY
+# DEBUG LOG OUTPUT
 # -------------------------------------------------------------------
 with st.expander("🔍 DEBUG LOG (click to expand)", expanded=False):
-    if not debug_logs:
-        st.write("No debug logs recorded yet.")
-    else:
+    if debug_logs:
         for line in debug_logs:
             st.text(line)
+    else:
+        st.write("No debug logs recorded.")
 
 
 # -------------------------------------------------------------------
-# VALIDATE PREDICTION DATA
+# VALIDATE & DISPLAY TOP BETS
 # -------------------------------------------------------------------
 st.subheader("🔒 Top 25 Safest Bets Today")
 
 if preds is None:
-    st.warning("Prediction engine returned **None** — cannot display results.")
+    st.warning("Prediction engine returned None.")
     st.stop()
 
 if not isinstance(preds, pd.DataFrame):
@@ -81,12 +80,10 @@ if preds.empty:
     st.warning("No predictions available.")
     st.stop()
 
-# Ensure ranking columns exist
 if "confidence" not in preds.columns:
     preds["confidence"] = 0.0
 
-# Trim to top 25
-top25 = preds.sort_values("confidence", ascending=False).head(25)
+top25 = preds.sort_values(by="confidence", ascending=False).head(25)
 render_bet_table(top25)
 
 
@@ -95,11 +92,11 @@ render_bet_table(top25)
 # -------------------------------------------------------------------
 st.subheader("📊 Player Profiles")
 
-if "player_name" not in preds.columns:
-    st.info("Prediction results missing player_name field — cannot build profiles.")
-else:
+if "player_name" in preds.columns:
     for _, row in top25.iterrows():
         render_player_card(row)
+else:
+    st.info("Missing column 'player_name' — cannot render player profiles.")
 
 
 # -------------------------------------------------------------------
