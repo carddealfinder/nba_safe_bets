@@ -4,10 +4,17 @@ import pandas as pd
 URL = "https://www.basketball-reference.com/leagues/NBA_2024_ratings.html"
 
 
+def normalize_col(col):
+    """Normalize column names whether they are strings or tuples."""
+    if isinstance(col, tuple):   # MultiIndex column
+        col = " ".join([str(c) for c in col if c and c != ""])  # join parts
+    return str(col).strip()
+
+
 def get_defense_rankings():
-    """Scrapes defensive efficiency metrics from Basketball Reference with fallback handling."""
+    """Scrape defensive metrics with full dynamic MultiIndex-safe handling."""
     try:
-        df_list = pd.read_html(URL)
+        df_list = pd.read_html(URL, header=0)
     except Exception as e:
         print("[DEFENSE ERROR] Could not read HTML:", e)
         return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
@@ -16,51 +23,52 @@ def get_defense_rankings():
         print("[DEFENSE ERROR] No tables returned.")
         return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
 
-    df = df_list[0]  # usually the ratings table
+    df = df_list[0]
 
-    # DEBUG: print first few column names
-    print("[DEFENSE] Columns found:", list(df.columns))
+    # Normalize ALL columns (handles tuple MultiIndex)
+    df.columns = [normalize_col(c) for c in df.columns]
 
-    # Flexible detection of columns — Basketball Reference changes formats often
+    print("[DEFENSE] Columns found:", df.columns.tolist())
+
     col_map = {}
 
-    # TEAM NAME COLUMN
+    # TEAM COLUMN
     for c in df.columns:
-        if "Team" in c or "team" in c.lower():
+        if "team" in c.lower():
             col_map["team"] = c
             break
 
-    # DEFENSE / DRtg column
+    # DEFENSE RATING
     for c in df.columns:
-        if "DRtg" in c or "Def" in c or "def" in c.lower():
+        if "drtg" in c.lower() or "def" in c.lower():
             col_map["points"] = c
             break
 
-    # Rebounds proxy (ORB% or DRB% depending what exists)
+    # REBOUNDS
     for c in df.columns:
-        if "ORB%" in c or "DRB%" in c or "RB%" in c:
+        if "orb" in c.lower() or "drb" in c.lower() or "reb" in c.lower():
             col_map["rebounds"] = c
             break
 
-    # Assists proxy (AST% or AST/TO)
+    # ASSISTS
     for c in df.columns:
-        if "AST" in c:
+        if "ast" in c.lower():
             col_map["assists"] = c
             break
 
-    # Threes proxy (3P% or Opp 3P%)
+    # THREES
     for c in df.columns:
-        if "3P" in c:
+        if "3p" in c.lower():
             col_map["threes"] = c
             break
 
-    # If ANY required metric missing → return safe empty DataFrame
     required = ["team", "points", "rebounds", "assists", "threes"]
-    if not all(x in col_map for x in required):
-        print("[DEFENSE ERROR] Could not map required columns. Found map:", col_map)
+
+    if not all(r in col_map for r in required):
+        print("[DEFENSE ERROR] Missing required mapped columns:", col_map)
         return pd.DataFrame(columns=required)
 
-    # Rename dynamically and return
+    # Rename into a standard output format
     df = df.rename(columns={
         col_map["team"]: "team",
         col_map["points"]: "points",
