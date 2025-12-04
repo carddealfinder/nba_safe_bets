@@ -1,56 +1,45 @@
-import requests
 import pandas as pd
 
-NBA_DEFENSE_URL = (
-    "https://stats.nba.com/stats/leaguedashteamstats"
-    "?Conference=&DateFrom=&DateTo=&Division=&GameScope=&GameSegment="
-    "&LastNGames=0&LeagueID=00&Location=&MeasureType=Advanced&Month=0"
-    "&OpponentTeamID=0&Outcome=&PORound=&PaceAdjust=N&PerMode=PerGame"
-    "&Period=0&PlayerExperience=&PlayerPosition=&PlusMinus=N"
-    "&Rank=N&Season=2024-25&SeasonSegment=&SeasonType=Regular+Season"
-    "&ShotClockRange=&StarterBench=&TeamID=&TwoWay=&VsConference="
-    "&VsDivision="
-)
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Referer": "https://www.nba.com/",
-    "Origin": "https://www.nba.com"
-}
+URL = "https://www.basketball-reference.com/leagues/NBA_2024_ratings.html"
 
 
 def get_defense_rankings():
-    """Retrieve team defensive stats from NBA stats API."""
+    """Load team defense metrics from Basketball Reference safely."""
     try:
-        r = requests.get(NBA_DEFENSE_URL, headers=HEADERS, timeout=15)
-        r.raise_for_status()
+        df_list = pd.read_html(URL)
     except Exception as e:
-        print("[DEFENSE ERROR] Could not fetch NBA defensive stats:", e)
+        print("[DEFENSE ERROR] Could not read HTML:", e)
         return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
 
-    try:
-        json_data = r.json()
-    except Exception:
-        print("[DEFENSE ERROR] Failed to decode JSON")
+    # Pick the first table (defensive ratings)
+    df = df_list[0].copy()
+
+    # Flatten multi-index columns if they exist
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = ["_".join([str(c) for c in col if c]) for col in df.columns]
+
+    # Create lowercase-safe column list
+    cols = {col.lower(): col for col in df.columns}
+
+    # Extract closest matching columns
+    team_col = next((v for k, v in cols.items() if "team" in k), None)
+    drtg_col = next((v for k, v in cols.items() if "drtg" in k), None)
+    orb_col = next((v for k, v in cols.items() if "orb" in k), None)
+    ast_col = next((v for k, v in cols.items() if "ast" in k), None)
+    three_col = next((v for k, v in cols.items() if "3p" in k or "3p%" in k), None)
+
+    if not team_col:
+        print("[DEFENSE ERROR] Team column not found")
         return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
 
-    rows = json_data.get("resultSets", [])[0]
-    headers = rows.get("headers", [])
-    data = rows.get("rowSet", [])
+    # Build cleaned output even if some columns missing
+    out = pd.DataFrame()
+    out["team"] = df[team_col]
 
-    df = pd.DataFrame(data, columns=headers)
+    out["points"] = df[drtg_col] if drtg_col else 0
+    out["rebounds"] = df[orb_col] if orb_col else 0
+    out["assists"] = df[ast_col] if ast_col else 0
+    out["threes"] = df[three_col] if three_col else 0
 
-    # Keep and rename important defensive metrics
-    df = df.rename(columns={
-        "TEAM_NAME": "team",
-        "DEF_RATING": "points",
-        "DREB_PCT": "rebounds",
-        "AST_RATIO": "assists",
-        "OPP_EFG_PCT": "threes"
-    })
-
-    df = df[["team", "points", "rebounds", "assists", "threes"]]
-
-    print(f"[DEFENSE] Loaded defense rankings: {df.shape}")
-
-    return df
+    print("[DEFENSE] Loaded rankings:", out.shape)
+    return out
