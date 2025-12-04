@@ -1,145 +1,116 @@
+# ==========================================
+# streamlit_app.py  (Option A - PATH FIX)
+# ==========================================
+
+import sys
+import os
+
+# --- FIX PYTHON PATH FOR STREAMLIT CLOUD ---
+ROOT = os.path.dirname(os.path.abspath(__file__))        # /safe_bets_app
+PARENT = os.path.dirname(ROOT)                           # repo root
+PACKAGE_ROOT = os.path.join(ROOT, "nba_safe_bets")       # /safe_bets_app/nba_safe_bets
+
+# Add paths if missing
+for p in [ROOT, PARENT, PACKAGE_ROOT]:
+    if p not in sys.path:
+        sys.path.append(p)
+
+# --- STREAMLIT START ---
 import streamlit as st
+import pandas as pd
 
-# Daily prediction engine
 from nba_safe_bets.daily_predict.daily_predict import daily_predict
-
-# UI components
 from nba_safe_bets.dashboard.components.bet_table import render_bet_table
+from nba_safe_bets.dashboard.components.charts import render_probability_distribution
 from nba_safe_bets.dashboard.components.player_card import render_player_card
-from nba_safe_bets.dashboard.components.charts import render_player_charts
 
 
-
-# ---------------------------------------------------------
-# 🔧 PAGE CONFIG
-# ---------------------------------------------------------
+# ==========================================
+# PAGE CONFIG
+# ==========================================
 st.set_page_config(
-    page_title="NBA Safe Bets Engine",
+    page_title="NBA Safe Bets AI Engine",
     layout="wide",
-    initial_sidebar_state="expanded"
+    page_icon="🏀"
 )
 
 st.title("🏀 NBA Top 25 Safest Bets (Daily Prediction Engine)")
 st.caption("Automatically generated predictions based on stats, matchups, injuries, odds, and player context.")
 
 
-# ---------------------------------------------------------
-# 🐞 DEBUG PANEL (Collapsible)
-# ---------------------------------------------------------
-with st.expander("🔍 DEBUG LOG (click to expand)"):
-    if "debug_log" in st.session_state:
-        st.text(st.session_state["debug_log"])
-    else:
-        st.write("App initialized. Waiting to run prediction engine.")
+# ==========================================
+# DEBUG EXPANDER
+# ==========================================
+debug_expander = st.expander("🔍 DEBUG LOG (click to expand)")
+debug_buffer = []
 
 
-# ---------------------------------------------------------
-# 🚀 RUN PREDICTION ENGINE
-# ---------------------------------------------------------
-run_btn = st.button("⚡ Run Prediction Engine", type="primary")
+def debug(msg):
+    debug_buffer.append(msg)
 
-if run_btn:
-    st.session_state["debug_log"] = ""
-    st.write("Running daily_predict()...")
+
+# ==========================================
+# RUN PREDICTION ENGINE BUTTON
+# ==========================================
+st.divider()
+if st.button("🚀 Run Prediction Engine", type="primary"):
+    debug("Running daily_predict()...")
 
     try:
-        preds = daily_predict()
-        st.session_state["predictions"] = preds
-        st.session_state["debug_log"] += "\ndaily_predict() executed successfully.\n"
+        preds = daily_predict(debug)
+        st.session_state["preds"] = preds
+        debug("daily_predict() executed successfully.")
     except Exception as e:
-        st.error("❌ Prediction engine crashed.")
-        st.exception(e)
-        st.stop()
-
-
-# ---------------------------------------------------------
-# 📊 FETCH PREDICTIONS
-# ---------------------------------------------------------
-preds = st.session_state.get("predictions")
-
-if preds is not None and isinstance(preds, pd.DataFrame) and not preds.empty:
-
-    # ---------------------------------------------------------
-    # 🎛️ SIDEBAR FILTERS
-    # ---------------------------------------------------------
-    st.sidebar.header("🔎 Filter Safe Bets")
-
-    # Team filter
-    teams = sorted(preds["team"].dropna().unique())
-    team_filter = st.sidebar.multiselect("Filter by Team:", teams, default=[])
-
-    # Stat Type filter
-    stat_types = sorted(preds["stat"].dropna().unique())
-    stat_filter = st.sidebar.multiselect("Filter by Stat Type:", stat_types, default=[])
-
-    # Minimum final probability
-    min_prob = st.sidebar.slider(
-        "Minimum Final Probability (%)",
-        min_value=0,
-        max_value=100,
-        value=60
-    ) / 100.0
-
-    # Minimum safety score
-    min_safety = st.sidebar.slider(
-        "Minimum Safety Score",
-        min_value=0.0,
-        max_value=10.0,
-        value=5.0,
-        step=0.1
-    )
-
-    # ---------------------------------------------------------
-    # Apply Filters
-    # ---------------------------------------------------------
-    filtered = preds.copy()
-
-    if team_filter:
-        filtered = filtered[filtered["team"].isin(team_filter)]
-
-    if stat_filter:
-        filtered = filtered[filtered["stat"].isin(stat_filter)]
-
-    filtered = filtered[
-        (filtered["final_prob"] >= min_prob) &
-        (filtered["safety_score"] >= min_safety)
-    ]
-
-    st.session_state["filtered_predictions"] = filtered
+        debug(f"❌ daily_predict() crashed: {e}")
+        st.error(f"Prediction Engine Error: {e}")
+        preds = None
 
 else:
-    st.session_state["filtered_predictions"] = None
+    preds = st.session_state.get("preds", None)
+    debug("App initialized. Waiting to run prediction engine.")
 
 
-# ---------------------------------------------------------
-# 🧮 DISPLAY FILTERED BET TABLE
-# ---------------------------------------------------------
+# Push logs into UI
+debug_expander.write("```\n" + "\n".join(debug_buffer) + "\n```")
+
+
+# ==========================================
+# SAFEST BETS TABLE
+# ==========================================
 st.subheader("🔒 Top 25 Safest Bets Today")
 
-filtered_preds = st.session_state.get("filtered_predictions")
-
-if filtered_preds is None or filtered_preds.empty:
-    st.warning("No predictions available after applying filters.")
+if preds is None or not isinstance(preds, pd.DataFrame) or preds.empty:
+    st.info("No predictions available.")
 else:
-    render_bet_table(filtered_preds.head(25))
+    render_bet_table(preds)
 
 
-# ---------------------------------------------------------
-# 🧍 PLAYER PROFILES SECTION
-# ---------------------------------------------------------
+# ==========================================
+# PLAYER PROFILES
+# ==========================================
 st.subheader("📊 Player Profiles")
 
-if filtered_preds is None or filtered_preds.empty:
+if preds is None or preds.empty:
     st.info("Prediction results required to display player profiles.")
-    st.stop()
+else:
+    # Pick top 8 players for cards
+    top_players = preds.groupby("player").head(1).head(8)
 
-top_n = st.slider("Number of player profiles to show", 5, 25, 10)
+    cols = st.columns(4)
+    idx = 0
 
-top_players = filtered_preds.head(top_n)
+    for _, row in top_players.iterrows():
+        with cols[idx % 4]:
+            render_player_card(row)
+        idx += 1
 
-cols = st.columns(3)
 
-for i, (_, row) in enumerate(top_players.iterrows()):
-    with cols[i % 3]:
-        render_player_card(row)
+# ==========================================
+# PROBABILITY DISTRIBUTION CHARTS
+# ==========================================
+st.subheader("📈 Probability Distributions")
 
+if preds is None or preds.empty:
+    st.info("Run predictions to visualize probability curves.")
+else:
+    render_probability_distribution(preds)
