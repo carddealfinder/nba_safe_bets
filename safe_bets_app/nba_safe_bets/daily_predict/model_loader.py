@@ -1,28 +1,31 @@
 import os
 import pickle
 
-
 def load_models():
-    model_dir = os.path.join(os.path.dirname(__file__), "..", "models", "trained")
-    model_dir = os.path.abspath(model_dir)
+    """Load all trained stat models from /models/trained directory."""
+    base_dir = os.path.dirname(os.path.dirname(__file__))
+    trained_dir = os.path.join(base_dir, "models", "trained")
+
+    trained_dir = os.path.abspath(trained_dir)
+    print("[MODEL LOADER] Looking in:", trained_dir)
+
+    if not os.path.exists(trained_dir):
+        print("[MODEL LOADER ERROR] Directory not found")
+        return {}
 
     models = {}
 
-    if not os.path.exists(model_dir):
-        print("[ERROR] Model directory missing:", model_dir)
-        return models
+    for filename in os.listdir(trained_dir):
+        if filename.endswith(".pkl"):
+            stat = filename.replace("_model.pkl", "")
+            full_path = os.path.join(trained_dir, filename)
 
-    for name in os.listdir(model_dir):
-        if not name.endswith(".pkl"):
-            continue
+            try:
+                with open(full_path, "rb") as f:
+                    models[stat] = pickle.load(f)
+                print(f"[MODEL LOADER] Loaded: {filename}")
+            except Exception as e:
+                print(f"[MODEL ERROR] Could not load {filename}: {e}")
 
-        path = os.path.join(model_dir, name)
-        key = name.replace("_model.pkl", "")
-
-        try:
-            with open(path, "rb") as f:
-                models[key] = pickle.load(f)
-        except Exception as e:
-            print(f"[ERROR] Cannot load model {name}: {e}")
-
+    print("[MODEL LOADER] Total models loaded:", len(models))
     return models

@@ -1,83 +1,56 @@
 import requests
 import pandas as pd
 
-URL = "https://www.basketball-reference.com/leagues/NBA_2024_ratings.html"
+NBA_DEFENSE_URL = (
+    "https://stats.nba.com/stats/leaguedashteamstats"
+    "?Conference=&DateFrom=&DateTo=&Division=&GameScope=&GameSegment="
+    "&LastNGames=0&LeagueID=00&Location=&MeasureType=Advanced&Month=0"
+    "&OpponentTeamID=0&Outcome=&PORound=&PaceAdjust=N&PerMode=PerGame"
+    "&Period=0&PlayerExperience=&PlayerPosition=&PlusMinus=N"
+    "&Rank=N&Season=2024-25&SeasonSegment=&SeasonType=Regular+Season"
+    "&ShotClockRange=&StarterBench=&TeamID=&TwoWay=&VsConference="
+    "&VsDivision="
+)
 
-
-def normalize_col(col):
-    """Normalize column names whether they are strings or tuples."""
-    if isinstance(col, tuple):   # MultiIndex column
-        col = " ".join([str(c) for c in col if c and c != ""])  # join parts
-    return str(col).strip()
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://www.nba.com/",
+    "Origin": "https://www.nba.com"
+}
 
 
 def get_defense_rankings():
-    """Scrape defensive metrics with full dynamic MultiIndex-safe handling."""
+    """Retrieve team defensive stats from NBA stats API."""
     try:
-        df_list = pd.read_html(URL, header=0)
+        r = requests.get(NBA_DEFENSE_URL, headers=HEADERS, timeout=15)
+        r.raise_for_status()
     except Exception as e:
-        print("[DEFENSE ERROR] Could not read HTML:", e)
+        print("[DEFENSE ERROR] Could not fetch NBA defensive stats:", e)
         return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
 
-    if not df_list:
-        print("[DEFENSE ERROR] No tables returned.")
+    try:
+        json_data = r.json()
+    except Exception:
+        print("[DEFENSE ERROR] Failed to decode JSON")
         return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
 
-    df = df_list[0]
+    rows = json_data.get("resultSets", [])[0]
+    headers = rows.get("headers", [])
+    data = rows.get("rowSet", [])
 
-    # Normalize ALL columns (handles tuple MultiIndex)
-    df.columns = [normalize_col(c) for c in df.columns]
+    df = pd.DataFrame(data, columns=headers)
 
-    print("[DEFENSE] Columns found:", df.columns.tolist())
-
-    col_map = {}
-
-    # TEAM COLUMN
-    for c in df.columns:
-        if "team" in c.lower():
-            col_map["team"] = c
-            break
-
-    # DEFENSE RATING
-    for c in df.columns:
-        if "drtg" in c.lower() or "def" in c.lower():
-            col_map["points"] = c
-            break
-
-    # REBOUNDS
-    for c in df.columns:
-        if "orb" in c.lower() or "drb" in c.lower() or "reb" in c.lower():
-            col_map["rebounds"] = c
-            break
-
-    # ASSISTS
-    for c in df.columns:
-        if "ast" in c.lower():
-            col_map["assists"] = c
-            break
-
-    # THREES
-    for c in df.columns:
-        if "3p" in c.lower():
-            col_map["threes"] = c
-            break
-
-    required = ["team", "points", "rebounds", "assists", "threes"]
-
-    if not all(r in col_map for r in required):
-        print("[DEFENSE ERROR] Missing required mapped columns:", col_map)
-        return pd.DataFrame(columns=required)
-
-    # Rename into a standard output format
+    # Keep and rename important defensive metrics
     df = df.rename(columns={
-        col_map["team"]: "team",
-        col_map["points"]: "points",
-        col_map["rebounds"]: "rebounds",
-        col_map["assists"]: "assists",
-        col_map["threes"]: "threes",
+        "TEAM_NAME": "team",
+        "DEF_RATING": "points",
+        "DREB_PCT": "rebounds",
+        "AST_RATIO": "assists",
+        "OPP_EFG_PCT": "threes"
     })
 
-    result = df[["team", "points", "rebounds", "assists", "threes"]].copy()
+    df = df[["team", "points", "rebounds", "assists", "threes"]]
 
-    print("[DEFENSE] Final shape:", result.shape)
-    return result
+    print(f"[DEFENSE] Loaded defense rankings: {df.shape}")
+
+    return df
