@@ -19,6 +19,11 @@ if st.button("Run Prediction Engine"):
 if "predictions" in st.session_state:
     preds = st.session_state["predictions"]
 
+    # Convert list → DataFrame if needed
+    import pandas as pd
+    if isinstance(preds, list):
+        preds = pd.DataFrame(preds)
+
     st.subheader("🔒 Top 25 Safest Bets Today")
     render_bet_table(preds)
 
