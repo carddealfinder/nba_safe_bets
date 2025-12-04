@@ -1,4 +1,6 @@
 import pandas as pd
+import streamlit as st
+
 from nba_safe_bets.scrapers.nba_player_info import get_player_list
 from nba_safe_bets.scrapers.defense_rankings import get_all_defense_rankings
 from nba_safe_bets.scrapers.injury_report import get_injury_report
@@ -10,47 +12,48 @@ from nba_safe_bets.daily_predict.safe_bet_ranker import rank_safe_bets
 
 
 def daily_predict():
-    print("=== START DAILY PREDICTION ENGINE ===")
+    st.write("### 🔍 DEBUG: Starting Daily Prediction Engine")
 
     # ---------------------------------------
     # 1. Load Players
     # ---------------------------------------
     players = get_player_list()
-    print("Players DF Shape:", players.shape)
+    st.write("Players DF Shape:", players.shape)
+    st.write(players.head())
 
     if players.empty:
-        print("ERROR: Player list is EMPTY")
+        st.error("❌ Player list is EMPTY — NBA API returned no data.")
         return []
 
     # ---------------------------------------
     # 2. Defense Rankings
     # ---------------------------------------
     defense = get_all_defense_rankings()
-    print("Defense keys:", defense.keys())
+    st.write("Defense keys:", list(defense.keys()))
 
     # ---------------------------------------
-    # 3. Injuries
+    # 3. Injury Report
     # ---------------------------------------
     injuries = get_injury_report() or pd.DataFrame()
-    print("Injury DF Shape:", injuries.shape)
+    st.write("Injury DF Shape:", injuries.shape)
 
     # ---------------------------------------
     # 4. Schedule
     # ---------------------------------------
     schedule = get_schedule() or pd.DataFrame()
-    print("Schedule DF Shape:", schedule.shape)
+    st.write("Schedule DF Shape:", schedule.shape)
 
     # ---------------------------------------
-    # 5. Vegas
+    # 5. Vegas Odds
     # ---------------------------------------
     vegas = get_daily_vegas_lines() or pd.DataFrame()
-    print("Vegas DF Shape:", vegas.shape)
+    st.write("Vegas DF Shape:", vegas.shape)
 
     # ---------------------------------------
-    # 6. Models
+    # 6. Load Models
     # ---------------------------------------
     models = load_all_models()
-    print("Models Loaded:", list(models.keys()))
+    st.write("Models Loaded:", list(models.keys()))
 
     # ---------------------------------------
     # 7. Generate Predictions
@@ -81,29 +84,4 @@ def daily_predict():
         for stat_name, model in models.items():
             try:
                 prediction_row[stat_name] = model.predict(features)[0]
-            except Exception as e:
-                print(f"[MODEL ERROR] Player {pid}, stat {stat_name}: {e}")
-                prediction_row[stat_name] = None
-
-        prediction_row["PLAYER_ID"] = pid
-        prediction_row["PLAYER_NAME"] = row.get("PLAYER_NAME")
-        prediction_row["TEAM_ID"] = row.get("TEAM_ID")
-
-        results.append(prediction_row)
-        count_predictions += 1
-
-    print("Players with built features:", count_features)
-    print("Players with predictions:", count_predictions)
-
-    if count_predictions == 0:
-        print("ERROR: No predictions were created.")
-        return []
-
-    predictions_df = pd.DataFrame(results)
-    print("Predictions DF Shape:", predictions_df.shape)
-
-    ranked = rank_safe_bets(predictions_df)
-    print("Ranked Output Type:", type(ranked))
-
-    print("=== END PREDICTION ENGINE ===")
-    return ranked
+            exc
