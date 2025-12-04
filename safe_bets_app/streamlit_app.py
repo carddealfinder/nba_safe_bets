@@ -1,78 +1,101 @@
 import streamlit as st
 import pandas as pd
+import traceback
 
-# --- Imports from your package ---
+# --- ABSOLUTE IMPORTS FOR STREAMLIT CLOUD ---
 from nba_safe_bets.daily_predict.daily_predict import daily_predict
 from nba_safe_bets.dashboard.components.bet_table import render_bet_table
-from nba_safe_bets.dashboard.components.charts import render_charts
 from nba_safe_bets.dashboard.components.player_card import render_player_card
+from nba_safe_bets.dashboard.components.charts import render_charts
 
-# -------------------------------------------------
-# Streamlit Page Setup
-# -------------------------------------------------
+
 st.set_page_config(
-    page_title="NBA Top 25 Safest Bets",
-    layout="wide"
+    page_title="NBA Safe Bets",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# Storage for logs
+if "debug_logs" not in st.session_state:
+    st.session_state["debug_logs"] = []
+
+
+def log(msg):
+    """Append message to the debug log."""
+    st.session_state["debug_logs"].append(str(msg))
+
+
+# -------------------------------------------------------------------
+# PAGE HEADER
+# -------------------------------------------------------------------
 st.title("🏀 NBA Top 25 Safest Bets (Daily Prediction Engine)")
-st.caption("Automatically generated predictions based on stats, matchups, injuries, odds, and player context.")
+st.write("Automatically generated predictions based on stats, matchups, injuries, odds, and player context.")
+st.divider()
 
-# -------------------------------------------------
-# Debug Log Collection
-# -------------------------------------------------
-debug_messages = []
 
-def append_debug(msg: str):
-    """Callback to collect logs for UI display."""
-    debug_messages.append(str(msg))
-
-# -------------------------------------------------
-# Run Prediction Button
-# -------------------------------------------------
-if st.button("🔮 Run Prediction Engine"):
-    st.write("Running daily_predict()...")
+# -------------------------------------------------------------------
+# RUN ENGINE
+# -------------------------------------------------------------------
+if st.button("🚀 Run Prediction Engine"):
+    st.session_state["debug_logs"].clear()
 
     try:
-        preds, debug_output = daily_predict(debug_log_fn=append_debug)
-    except TypeError as e:
-        st.error("Prediction engine failed. daily_predict() signature mismatch.")
-        st.code(str(e))
-        preds = None
-        debug_output = []
+        st.write("Running daily_predict()...")
+        preds = daily_predict()   # No extra args!
 
-    # Add internal logs collected from debug_log_fn
-    debug_messages.extend(debug_output if isinstance(debug_output, list) else [])
+        st.session_state["predictions"] = preds
+        st.success("daily_predict() executed successfully!")
 
-    # Display Debug Logs
-    with st.expander("🔍 DEBUG LOG (click to expand)", expanded=False):
-        for line in debug_messages:
+    except Exception as e:
+        st.error("Prediction engine failed.")
+        log("ENGINE ERROR:\n" + traceback.format_exc())
+        st.session_state["predictions"] = pd.DataFrame()
+
+
+# -------------------------------------------------------------------
+# DEBUG LOG PANEL
+# -------------------------------------------------------------------
+with st.expander("🔍 DEBUG LOG (click to expand)"):
+    if st.session_state["debug_logs"]:
+        for line in st.session_state["debug_logs"]:
             st.text(line)
-
-    # -------------------------------------------------
-    # Predictions Table
-    # -------------------------------------------------
-    st.header("🔒 Top 25 Safest Bets Today")
-
-    if preds is None or not isinstance(preds, pd.DataFrame) or preds.empty:
-        st.warning("No predictions available.")
     else:
-        preds = preds.head(25)
-        render_bet_table(preds)
+        st.write("No debug logs recorded yet.")
 
-    # -------------------------------------------------
-    # Player Profiles
-    # -------------------------------------------------
+
+# -------------------------------------------------------------------
+# PROCESS RESULTS
+# -------------------------------------------------------------------
+preds = st.session_state.get("predictions", pd.DataFrame())
+
+st.divider()
+st.header("🔒 Top 25 Safest Bets Today")
+
+if preds is None or preds.empty or not isinstance(preds, pd.DataFrame):
+    st.warning("No predictions available.")
+else:
+    render_bet_table(preds)
+
+    # -------------------------------------------------------------------
+    # CHARTS
+    # -------------------------------------------------------------------
+    st.divider()
+    st.header("📈 Visualization")
+    try:
+        render_charts(preds)
+    except Exception as e:
+        st.error("Failed to render charts.")
+        log("CHART ERROR:\n" + traceback.format_exc())
+
+    # -------------------------------------------------------------------
+    # PLAYER PROFILES
+    # -------------------------------------------------------------------
+    st.divider()
     st.header("📊 Player Profiles")
 
-    if preds is None or preds.empty:
-        st.info("Prediction results required to display player profiles.")
-    else:
+    try:
         for _, row in preds.iterrows():
             render_player_card(row)
-
-# -------------------------------------------------
-# Initial State View Before Running
-# -------------------------------------------------
-else:
-    st.info("Click **Run Prediction Engine** to generate today's safest NBA bets.")
+    except Exception as e:
+        st.error("Failed to render player cards.")
+        log("CARD ERROR:\n" + traceback.format_exc())
