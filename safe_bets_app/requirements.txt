@@ -3,4 +3,5 @@ plotly
 lxml
 rapidfuzz==3.9.1
 matplotlib==3.7.2
+scikit-learn==1.3.2
 
