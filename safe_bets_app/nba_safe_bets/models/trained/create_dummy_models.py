@@ -1,48 +1,24 @@
-$path = "C:\Users\srmic\nba_safe_bets\safe_bets_app\nba_safe_bets\models\trained\create_dummy_models.py"
-
-@"
 import os
-import pickle
+import joblib
+from sklearn.dummy import DummyRegressor
 import numpy as np
-from sklearn.linear_model import LinearRegression
 
-# Folder inside repo
-MODEL_DIR = os.path.dirname(__file__)
+MODEL_NAMES = ["points", "rebounds", "assists", "threes"]
 
-models_to_create = {
-    "points_model.pkl": 12.5,
-    "rebounds_model.pkl": 5.8,
-    "assists_model.pkl": 4.1,
-    "threes_model.pkl": 2.2
-}
+def ensure_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
 
-def create_dummy_regressor(constant_value):
-    """
-    Creates a dummy model that always predicts a constant number.
-    Useful for testing the ML pipeline.
-    """
-    X = np.array([[0], [1], [2], [3], [4], [5]])
-    y = np.full_like(X, constant_value, dtype=float)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ensure_dir(BASE_DIR)
 
-    model = LinearRegression()
-    model.fit(X, y)
+print("Saving dummy models to:", BASE_DIR)
 
-    return model
+for name in MODEL_NAMES:
+    model = DummyRegressor(strategy="mean")
+    model.fit(np.array([[1], [2], [3]]), np.array([5, 5, 5]))  # Always predicts 5
 
-def main():
-    print("Creating dummy models in:", MODEL_DIR)
-    
-    for filename, constant_value in models_to_create.items():
-        model = create_dummy_regressor(constant_value)
-        path = os.path.join(MODEL_DIR, filename)
+    out_path = os.path.join(BASE_DIR, f"{name}_model.pkl")
+    joblib.dump(model, out_path)
 
-        with open(path, "wb") as f:
-            pickle.dump(model, f)
-
-        print(f"✔ Created {filename} (predicts ~{constant_value})")
-
-    print("All dummy models created successfully.")
-
-if __name__ == "__main__":
-    main()
-"@ | Set-Content -Path $path
+    print(f"Created: {out_path}")
