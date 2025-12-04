@@ -1,5 +1,6 @@
 import sys
 import os
+import streamlit as st
 
 # Get the absolute path of the project root (two levels up)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
