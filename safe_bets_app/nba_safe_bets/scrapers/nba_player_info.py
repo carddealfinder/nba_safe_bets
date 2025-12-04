@@ -1,30 +1,35 @@
-import requests
 import pandas as pd
-from nba_safe_bets.utils.retry import safe_request   # ✅ FIXED IMPORT
+import requests
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+# Cloud-safe NBA player list (public JSON)
+PLAYER_LIST_URL = "https://raw.githubusercontent.com/bttmly/nba/master/data/players.json"
 
-def get_player_list(season="2024-25"):
-    url = "https://stats.nba.com/stats/commonallplayers"
+def get_player_list():
+    """
+    Returns a DataFrame with columns:
+    PLAYER_ID, PLAYER_NAME, TEAM_ID
+    using a public GitHub-hosted NBA dataset.
+    """
+    try:
+        r = requests.get(PLAYER_LIST_URL, timeout=10)
+        data = r.json()
+    except Exception as e:
+        print("[ERROR] Failed to fetch player list:", e)
+        return pd.DataFrame(columns=["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"])
 
-    params = {
-        "LeagueID": "00",
-        "Season": season,
-        "IsOnlyCurrentSeason": 1
-    }
+    # Convert to DataFrame
+    df = pd.DataFrame(data)
 
-    data = safe_request(url, params=params, headers=HEADERS)
-    if data is None:
-        return pd.DataFrame()
+    # Ensure required columns
+    if "playerId" not in df or "firstName" not in df or "lastName" not in df:
+        print("[ERROR] Player dataset missing required fields.")
+        return pd.DataFrame(columns=["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"])
 
-    rows = data["resultSets"][0]["rowSet"]
-    headers = data["resultSets"][0]["headers"]
+    # Build expected schema
+    df["PLAYER_ID"] = df["playerId"]
+    df["PLAYER_NAME"] = df["firstName"] + " " + df["lastName"]
 
-    df = pd.DataFrame(rows, columns=headers)
-    df.rename(columns={
-        "PERSON_ID": "PLAYER_ID",
-        "DISPLAY_FIRST_LAST": "PLAYER_NAME"
-    }, inplace=True)
+    # TEAM ID not included → fill null (your model can handle this)
+    df["TEAM_ID"] = None
 
-    # Only return required columns
     return df[["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"]]
