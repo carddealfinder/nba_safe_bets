@@ -1,14 +1,15 @@
+import sys, os
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 
-# -----------------------------
-# Correct package imports
-# -----------------------------
+# Add safe_bets_app root to Python path
+sys.path.append(os.path.dirname(__file__))
+
+# Now imports work
 from nba_safe_bets.daily_predict.daily_predict import daily_predict
 from nba_safe_bets.dashboard.components.bet_table import render_bet_table
 from nba_safe_bets.dashboard.components.player_card import render_player_card
-
+from nba_safe_bets.dashboard.components.charts import render_charts
 
 # -----------------------------
 # Streamlit UI Setup
