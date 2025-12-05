@@ -1,43 +1,43 @@
 import os
-import pickle
+import xgboost as xgb
 
-def load_models(debug_log_fn=print):
+def load_models():
     """
-    Load all .pkl models from the trained/ directory
-    regardless of whether app runs locally or on Streamlit Cloud.
+    Loads all XGBoost models from the trained/ directory.
+    Works locally and on Streamlit Cloud.
     """
 
-    # Directory containing THIS file
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Determine directory of THIS file
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Correct trained model directory using relative path
-    trained_dir = os.path.join(current_dir, "..", "models", "trained")
+    # Models are in: ../models/trained/
+    model_dir = os.path.join(base_dir, "..", "models", "trained")
+    model_dir = os.path.abspath(model_dir)
 
-    trained_dir = os.path.abspath(trained_dir)
+    print(f"[MODEL LOADER] Looking for models in: {model_dir}")
 
-    debug_log_fn(f"[MODEL LOADER] Looking for models in: {trained_dir}")
-
-    if not os.path.exists(trained_dir):
-        debug_log_fn("[MODEL LOADER ERROR] Directory does not exist")
+    if not os.path.isdir(model_dir):
+        print("[MODEL ERROR] Model directory not found!")
         return {}
 
-    model_files = [f for f in os.listdir(trained_dir) if f.endswith(".pkl")]
-    debug_log_fn(f"[MODEL LOADER] Files found: {model_files}")
-
     models = {}
+    model_names = ["points", "rebounds", "assists", "threes"]
 
-    for filename in model_files:
-        path = os.path.join(trained_dir, filename)
-        stat = filename.replace("_model.pkl", "")
+    # Load JSON models only
+    for name in model_names:
+        json_file = os.path.join(model_dir, f"{name}_model.json")
+
+        if not os.path.exists(json_file):
+            print(f"[MODEL WARNING] Missing {name}_model.json")
+            continue
 
         try:
-            with open(path, "rb") as f:
-                models[stat] = pickle.load(f)
-            debug_log_fn(f"[MODEL LOADER] Loaded: {filename}")
-
+            model = xgb.XGBClassifier()
+            model.load_model(json_file)
+            models[name] = model
+            print(f"[MODEL LOADER] Loaded {name} model.")
         except Exception as e:
-            debug_log_fn(f"[MODEL LOADER ERROR] Failed to load {filename}: {e}")
+            print(f"[MODEL ERROR] Failed to load {name}: {e}")
 
-    debug_log_fn(f"[MODEL LOADER] Final model keys: {list(models.keys())}")
-
+    print(f"[MODEL LOADER] Final model keys: {list(models.keys())}")
     return models
