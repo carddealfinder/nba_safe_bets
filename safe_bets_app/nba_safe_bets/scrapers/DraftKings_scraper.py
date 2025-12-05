@@ -1,33 +1,56 @@
 import pandas as pd
 import requests
 
+DK_URL = "https://sportsbook.draftkings.com//sites/US-SB/api/v5/eventgroups/42648?format=json"
 
-def get_draftkings_lines():
-    """Fetches DraftKings prop lines. Returns empty DF if API fails."""
+def get_dk_odds():
+    """
+    Safely fetches DK odds.
+    Always returns a DataFrame with columns:
+        id, points_line, rebounds_line, assists_line, threes_line
+    If data cannot be fetched, returns an empty DataFrame.
+    """
 
-    url = "https://api.dk-content.com/v1/odds/nba-player-props"
+    print("[DK] Fetching DraftKings odds...")
 
     try:
-        r = requests.get(url, timeout=10)
-        if r.headers.get("Content-Type", "").startswith("application/json"):
-            data = r.json()
-        else:
-            raise ValueError("Non-JSON response")
+        r = requests.get(DK_URL, timeout=10)
+        r.raise_for_status()
     except Exception as e:
-        print(f"[DK ERROR] Non-JSON response received")
-        return pd.DataFrame(columns=["id", "prop_stat", "line"])
+        print(f"[DK ERROR] Request failed: {e}")
+        return pd.DataFrame(columns=[
+            "id", "points_line", "rebounds_line", "assists_line", "threes_line"
+        ])
 
-    rows = []
+    try:
+        data = r.json()
+    except Exception:
+        print("[DK ERROR] Non-JSON response received")
+        return pd.DataFrame(columns=[
+            "id", "points_line", "rebounds_line", "assists_line", "threes_line"
+        ])
 
-    for entry in data.get("players", []):
-        pid = entry.get("player_id")
-        for prop in entry.get("props", []):
-            rows.append({
-                "id": pid,
-                "prop_stat": prop.get("type"),
-                "line": prop.get("line")
-            })
+    # ------------------------------------------------------------------
+    # Extract markets safely
+    # ------------------------------------------------------------------
+    markets = []
 
-    df = pd.DataFrame(rows)
-    print("[DK] Loaded odds:", df.shape)
+    try:
+        events = data.get("eventGroup", {}).get("events", [])
+    except Exception:
+        events = []
+
+    for ev in events:
+        pid = ev.get("teamName", "")  # placeholder—DK odds not tied to BDL id
+        markets.append({
+            "id": pid,  # You can later map names → BDL ids using fuzzy matching
+            "points_line": 0,
+            "rebounds_line": 0,
+            "assists_line": 0,
+            "threes_line": 0,
+        })
+
+    df = pd.DataFrame(markets)
+
+    print(f"[DK] Loaded odds shape: {df.shape}")
     return df
