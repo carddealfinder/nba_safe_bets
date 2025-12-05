@@ -1,26 +1,33 @@
 import os
 import xgboost as xgb
 
+
 def load_models(model_dir):
-    models = {}
+    """
+    Loads the XGBoost models stored as .json files in the trained directory.
+    Returns a dictionary of models keyed by stat type.
+    """
+
     print(f"[MODEL LOADER] Looking for models in: {model_dir}")
 
-    # List JSON model files
-    model_files = [f for f in os.listdir(model_dir) if f.endswith("_model.json")]
-    print(f"[MODEL LOADER] Files found: {model_files}")
+    models = {}
+    stat_names = ["points", "rebounds", "assists", "threes"]
 
-    for file in model_files:
-        stat_name = file.replace("_model.json", "")  # points, rebounds, assists, threes
-        model_path = os.path.join(model_dir, file)
+    for stat in stat_names:
+        filename = f"{stat}_model.json"
+        full_path = os.path.join(model_dir, filename)
+
+        if not os.path.exists(full_path):
+            print(f"[MODEL WARNING] Missing model: {filename}")
+            continue
 
         try:
-            booster = xgb.Booster()
-            booster.load_model(model_path)
-            models[stat_name] = booster
-            print(f"[MODEL LOADER] Loaded model: {stat_name}")
-
+            model = xgb.XGBRegressor()
+            model.load_model(full_path)
+            models[stat] = model
+            print(f"[MODEL LOADER] Loaded {stat} model.")
         except Exception as e:
-            print(f"[MODEL ERROR] Failed to load {stat_name}: {e}")
+            print(f"[MODEL ERROR] Could not load {stat}: {e}")
 
     print(f"[MODEL LOADER] Final model keys: {list(models.keys())}")
     return models

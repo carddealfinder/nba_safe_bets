@@ -1,26 +1,27 @@
-import requests
 import pandas as pd
-
-# Placeholder endpoint — replace with real source if available
-INJURY_URL = "https://cdn.nba.com/static/json/injury/injury_2024.json"
+import requests
 
 
 def get_injury_report():
+    """Returns injury report dataframe (empty if API unavailable)."""
+
+    url = "https://cdn.nba.com/static/json/injury/injury_report.json"
+
     try:
-        r = requests.get(INJURY_URL, timeout=10)
+        r = requests.get(url, timeout=10)
         r.raise_for_status()
-    except Exception:
-        print("[INJURY] Unable to fetch injury report.")
-        return pd.DataFrame(columns=["id", "injury_status", "injury_desc"])
+        data = r.json().get("league", {}).get("standard", [])
+    except Exception as e:
+        print(f"[INJURY] Unable to fetch injury report: {e}")
+        return pd.DataFrame(columns=["player_id", "injury_status"])
 
-    payload = r.json().get("league", {}).get("standard", [])
     rows = []
-
-    for p in payload:
+    for p in data:
         rows.append({
-            "id": p.get("personId"),
-            "injury_status": p.get("status"),
-            "injury_desc": p.get("detail")
+            "player_id": int(p.get("personId", 0)),
+            "injury_status": p.get("comment", None)
         })
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    print("[INJURY] Loaded injury report:", df.shape)
+    return df

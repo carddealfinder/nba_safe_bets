@@ -1,45 +1,31 @@
 import pandas as pd
-
-URL = "https://www.basketball-reference.com/leagues/NBA_2024_ratings.html"
+import requests
 
 
 def get_defense_rankings():
-    """Load team defense metrics from Basketball Reference safely."""
+    """Scrapes defense rankings (returns fallback zeros if API fails)."""
+
+    url = "https://www.basketball-reference.com/leagues/NBA_2025_ratings.json"
+
     try:
-        df_list = pd.read_html(URL)
-    except Exception as e:
-        print("[DEFENSE ERROR] Could not read HTML:", e)
-        return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+    except Exception:
+        print("[DEFENSE] Failed to load rankings. Using fallback.")
+        return pd.DataFrame(columns=["team", "def_rating", "pace", "rank", "points_allowed"])
 
-    # Pick the first table (defensive ratings)
-    df = df_list[0].copy()
+    rows = []
 
-    # Flatten multi-index columns if they exist
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = ["_".join([str(c) for c in col if c]) for col in df.columns]
+    for team, val in data.items():
+        rows.append({
+            "team": team,
+            "def_rating": val.get("def_rating", 0),
+            "pace": val.get("pace", 0),
+            "rank": val.get("rank", 0),
+            "points_allowed": val.get("pts_allowed", 0)
+        })
 
-    # Create lowercase-safe column list
-    cols = {col.lower(): col for col in df.columns}
-
-    # Extract closest matching columns
-    team_col = next((v for k, v in cols.items() if "team" in k), None)
-    drtg_col = next((v for k, v in cols.items() if "drtg" in k), None)
-    orb_col = next((v for k, v in cols.items() if "orb" in k), None)
-    ast_col = next((v for k, v in cols.items() if "ast" in k), None)
-    three_col = next((v for k, v in cols.items() if "3p" in k or "3p%" in k), None)
-
-    if not team_col:
-        print("[DEFENSE ERROR] Team column not found")
-        return pd.DataFrame(columns=["team", "points", "rebounds", "assists", "threes"])
-
-    # Build cleaned output even if some columns missing
-    out = pd.DataFrame()
-    out["team"] = df[team_col]
-
-    out["points"] = df[drtg_col] if drtg_col else 0
-    out["rebounds"] = df[orb_col] if orb_col else 0
-    out["assists"] = df[ast_col] if ast_col else 0
-    out["threes"] = df[three_col] if three_col else 0
-
-    print("[DEFENSE] Loaded rankings:", out.shape)
-    return out
+    df = pd.DataFrame(rows)
+    print("[DEFENSE] Loaded rankings:", df.shape)
+    return df

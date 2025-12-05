@@ -126,3 +126,18 @@ def normalize_player_id(pid):
     if pid is None:
         return None
     return str(pid).strip()
+
+def safe_get(obj, path, default=None):
+    """
+    Safely extract a nested field from a dict using a list of keys.
+    
+    Example:
+        safe_get(data, ["player", "team", "full_name"])
+    """
+    current = obj
+    for key in path:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return default
+    return current

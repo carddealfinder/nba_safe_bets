@@ -1,44 +1,38 @@
 import pandas as pd
-import numpy as np
 
 
-def rank_safe_bets(models: dict, merged_df: pd.DataFrame, features_df: pd.DataFrame):
+def rank_safe_bets(pred_df, merged_df):
     """
-    Run ML predictions + compute final risk score.
-    Returns ranked top bets.
+    Combines predictions with merged dataset and produces a ranked list of safe bets.
     """
 
-    if merged_df.empty or features_df.empty:
-        print("[RANKER] Empty dataset — skipping.")
-        return pd.DataFrame()
+    df = merged_df.copy()
+    pred_cols = [c for c in pred_df.columns if c != "player_id"]
 
-    rows = []
+    # --------------------------
+    # Merge predicted values
+    # --------------------------
+    df = df.merge(pred_df, left_on="id", right_on="player_id", how="left")
+    df.drop(columns=["player_id"], inplace=True)
 
-    for stat_name, model in models.items():
-        try:
-            probs = model.predict_proba(features_df)[:, 1]
-        except Exception as e:
-            print(f"[RANKER ERROR] Model '{stat_name}' failed: {e}")
-            continue
+    # --------------------------
+    # Build safety score
+    # Weighted simple example (can tune later)
+    # --------------------------
+    df["safety_score"] = (
+        df.get("points", 0) * 0.4 +
+        df.get("rebounds", 0) * 0.2 +
+        df.get("assists", 0) * 0.2 +
+        df.get("threes", 0) * 0.2
+    )
 
-        for idx, prob in enumerate(probs):
-            rows.append({
-                "player": merged_df.iloc[idx]["first_name"] + " " + merged_df.iloc[idx]["last_name"],
-                "team": merged_df.iloc[idx].get("team"),
-                "opponent": merged_df.iloc[idx].get("opponent"),
-                "stat": stat_name,
-                "line": merged_df.iloc[idx].get("line"),
-                "final_prob": float(prob),
-                "safety_score": float(prob * 100)
-            })
+    # Push injured players lower
+    df["safety_score"] -= df["injury_factor"] * 5
 
-    df = pd.DataFrame(rows)
-
-    if df.empty:
-        print("[RANKER] No predictions created.")
-        return df
-
-    # Sort by safest → riskiest
+    # --------------------------
+    # Sort best bets
+    # --------------------------
     df = df.sort_values("safety_score", ascending=False)
 
+    # Keep top 25
     return df.head(25)

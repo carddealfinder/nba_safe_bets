@@ -1,40 +1,32 @@
-import requests
 import pandas as pd
+import requests
 
-DK_URL = "https://sportsbook.draftkings.com//sites/US-SB/api/v5/eventgroups/4?format=json"
 
+def get_draftkings_lines():
+    """Fetches DraftKings prop lines. Returns empty DF if API fails."""
 
-def get_draftkings_odds():
-    """Fetch DraftKings prop markets safely with HTML/JSON fallback."""
+    url = "https://api.dk-content.com/v1/odds/nba-player-props"
+
     try:
-        r = requests.get(DK_URL, timeout=10)
-        text = r.text.strip()
-
-        # If response is not JSON, abort safely
-        if not text.startswith("{"):
-            print("[DK ERROR] Non-JSON response received")
-            return pd.DataFrame(columns=["player", "stat", "line"])
-
-        data = r.json()
+        r = requests.get(url, timeout=10)
+        if r.headers.get("Content-Type", "").startswith("application/json"):
+            data = r.json()
+        else:
+            raise ValueError("Non-JSON response")
     except Exception as e:
-        print("[DK ERROR]", e)
-        return pd.DataFrame(columns=["player", "stat", "line"])
+        print(f"[DK ERROR] Non-JSON response received")
+        return pd.DataFrame(columns=["id", "prop_stat", "line"])
 
-    event_groups = data.get("eventGroup", {}).get("offerCategories", [])
     rows = []
 
-    for cat in event_groups:
-        for subcat in cat.get("offerSubcategoryDescriptors", []):
-            stat_name = subcat.get("subcategoryName")
-            offers = subcat.get("offerSubcategory", {}).get("offers", [])
-
-            for offer in offers:
-                for outcome in offer:
-                    rows.append({
-                        "player": outcome.get("participant"),
-                        "stat": stat_name,
-                        "line": outcome.get("line")
-                    })
+    for entry in data.get("players", []):
+        pid = entry.get("player_id")
+        for prop in entry.get("props", []):
+            rows.append({
+                "id": pid,
+                "prop_stat": prop.get("type"),
+                "line": prop.get("line")
+            })
 
     df = pd.DataFrame(rows)
     print("[DK] Loaded odds:", df.shape)

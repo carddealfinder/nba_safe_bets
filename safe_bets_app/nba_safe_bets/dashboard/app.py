@@ -1,24 +1,17 @@
 import streamlit as st
-import pandas as pd
 
-from ..daily_predict.daily_predict import daily_predict
-from .components.bet_table import render_bet_table
-from .components.player_card import render_player_card
-from .components.charts import render_bar_chart
+from nba_safe_bets.dashboard.components.bet_table import render_bet_table
+from nba_safe_bets.dashboard.components.player_card import render_player_card
+from nba_safe_bets.dashboard.components.charts import render_charts
 
 
-def run_dashboard():
-    st.title("🔒 Top 25 Safest Bets Today")
+def run_dashboard(df):
+    st.header("📊 NBA Safe Bets Dashboard")
 
-    preds = st.session_state.get("predictions")
+    render_charts(df)
 
-    if preds is None or preds.empty:
-        st.write("No predictions available.")
-        return
+    st.subheader("🔒 High-Confidence Bets")
+    render_bet_table(df)
 
-    render_bet_table(preds)
-
-    st.subheader("📊 Player Profiles")
-    for _, row in preds.head(5).iterrows():
-        render_player_card(row)
-        render_bar_chart(row)
+    st.subheader("🧍 Player Profiles")
+    render_player_card(df)

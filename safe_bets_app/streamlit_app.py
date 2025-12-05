@@ -2,47 +2,55 @@ import os
 import sys
 import streamlit as st
 
-# ------------------------------------------------------------
-# FIX IMPORTS: add project root to sys.path
-# ------------------------------------------------------------
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))      # safe_bets_app/
-PROJECT_ROOT = os.path.dirname(APP_ROOT)                   # nba_safe_bets/
+# --------------------------------------------------------------------
+# FIX: Ensure project root is always importable (local + Streamlit Cloud)
+# --------------------------------------------------------------------
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-# ------------------------------------------------------------
-# Correct imports
-# ------------------------------------------------------------
+# --------------------------------------------------------------------
+# NOW imports work the same everywhere
+# --------------------------------------------------------------------
 from nba_safe_bets.daily_predict.daily_predict import daily_predict
 from nba_safe_bets.dashboard.components.bet_table import render_bet_table
 from nba_safe_bets.dashboard.components.player_card import render_player_card
 from nba_safe_bets.dashboard.components.charts import render_charts
 
-
-# ------------------------------------------------------------
-# STREAMLIT UI
-# ------------------------------------------------------------
-st.set_page_config(page_title="NBA Safest Bets", layout="wide")
-
-st.title("🏀 NBA Top 25 Safest Bets (Daily Prediction Engine)")
-st.write("Automatically generated predictions based on stats, matchups, injuries, odds, and model outputs.")
+# --------------------------------------------------------------------
+# PAGE SETUP
+# --------------------------------------------------------------------
+st.set_page_config(page_title="NBA Safe Bets", layout="wide")
+st.title("🏀 NBA Safe Bets — Daily Prediction Engine")
 
 
-# ------------------------------------------------------------
-# RUN PREDICTION ENGINE
-# ------------------------------------------------------------
+# --------------------------------------------------------------------
+# RUN PREDICTIONS
+# --------------------------------------------------------------------
 try:
-    results, debug_log = daily_predict()
-
-    with st.expander("🔍 DEBUG LOG"):
-        st.text(debug_log)
-
-    if results is None or results.empty:
-        st.error("⚠ No predictions available.")
-    else:
-        st.success("Predictions generated successfully!")
-        render_bet_table(results)
-
+    predictions, players_df = daily_predict()
 except Exception as e:
     st.error(f"❌ Prediction engine crashed: {e}")
+    st.stop()
+
+
+# --------------------------------------------------------------------
+# SHOW RESULTS
+# --------------------------------------------------------------------
+st.subheader("🔒 Top 25 Safest Bets Today")
+
+if predictions is None or predictions.empty:
+    st.warning("⚠ No predictions available.")
+else:
+    render_bet_table(predictions)
+
+
+# --------------------------------------------------------------------
+# PLAYER PROFILES
+# --------------------------------------------------------------------
+st.subheader("📊 Player Profiles")
+
+if predictions is None or predictions.empty:
+    st.info("Run predictions to load player profiles.")
+else:
+    render_player_card(predictions, players_df)
