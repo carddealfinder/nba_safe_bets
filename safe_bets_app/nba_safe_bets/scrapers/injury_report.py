@@ -1,25 +1,28 @@
-import requests
+# nba_safe_bets/scrapers/injury_report.py
 import pandas as pd
+import requests
+from nba_safe_bets.utils.logging_config import log
 
+URL = "https://cdn.nba.com/static/json/injury/injury_report.json"
 
 def get_injury_report():
-    url = "https://cdn.nba.com/static/json/injury/injury_report.json"
-
     try:
-        r = requests.get(url, timeout=10)
-        if r.status_code != 200:
-            return pd.DataFrame(columns=["player_id", "injury_status"])
-
-        data = r.json().get("league", {}).get("standard", [])
+        resp = requests.get(URL, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
 
         rows = []
-        for p in data:
-            rows.append({
-                "player_id": p["personId"],
-                "injury_status": 1
-            })
+        for t in data.get("league", {}).get("injuryReport", []):
+            for p in t.get("players", []):
+                rows.append({
+                    "player": p.get("firstName", "") + " " + p.get("lastName", ""),
+                    "injury_status": p.get("status", "QUESTIONABLE")
+                })
 
         return pd.DataFrame(rows)
 
-    except:
-        return pd.DataFrame(columns=["player_id", "injury_status"])
+    except Exception as e:
+        log(f"[INJURY] Unable to fetch injury report: {e}")
+
+    # Fallback
+    return pd.DataFrame(columns=["player", "injury_status"])

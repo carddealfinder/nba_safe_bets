@@ -1,32 +1,22 @@
 import pandas as pd
+from nba_safe_bets.utils.logging_config import log
 
 def build_daily_feature_set(players_df, schedule_df, injury_df, defense_df, dk_df):
+    log("[FEATURE BUILDER] Building merged feature set...")
+
     df = players_df.copy()
 
-    # ---- ALWAYS ENSURE injury_status COLUMN EXISTS ----
-    # If injury_df is empty, create a blank one with zeros
-    if injury_df is None or injury_df.empty:
-        injury_df = pd.DataFrame({
-            "player_id": df["player_id"],
-            "injury_status": 0
-        })
+    df = df.merge(schedule_df, on="team", how="left")
 
-    # ---- MERGES USING player_id ----
-    if not schedule_df.empty:
-        df = df.merge(schedule_df, on="player_id", how="left")
+    df["injury_status"] = "HEALTHY"
+    if not injury_df.empty:
+        df = df.merge(injury_df, left_on="full_name", right_on="player", how="left")
+        df["injury_status"].fillna("HEALTHY", inplace=True)
 
-    df = df.merge(injury_df, on="player_id", how="left")  # <-- always safe now
+    df["injury_factor"] = df["injury_status"].apply(lambda x: 0.4 if x != "HEALTHY" else 1.0)
 
-    if not defense_df.empty:
-        df = df.merge(defense_df, on="team", how="left")
-
-    if not dk_df.empty:
-        df = df.merge(dk_df, on="player_id", how="left")
-
-    # ---- FILL MISSING VALUES ----
-    df.fillna(0, inplace=True)
-
-    # ---- INJURY FACTOR FEATURE ----
-    df["injury_factor"] = (df["injury_status"] != 0).astype(int)
+    needed_cols = ["points_avg", "rebounds_avg", "assists_avg", "threes_avg"]
+    for c in needed_cols:
+        df[c] = 10  # constant placeholder
 
     return df

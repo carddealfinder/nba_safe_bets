@@ -1,64 +1,44 @@
-import requests
+i# nba_safe_bets/scrapers/vegas_odds.py
 import pandas as pd
+import requests
 from nba_safe_bets.utils.logging_config import log
 
-DK_URL = "https://sportsbook.draftkings.com/api/sportscontent/v1/leagues/3/events"
+DK_URL = "https://sportsbook.draftkings.com//sites/US-SB/api/v5/eventgroups/42648?format=json"
 
 def get_dk_odds():
-    """
-    Fetches DraftKings NBA prop odds.
-    If DK blocks requests or returns HTML, JSON, or connection errors, 
-    we return a SAFE empty dataframe with the correct structure.
-    """
-
-    log("[DK] Fetching DraftKings odds...")
-
-    empty_df = pd.DataFrame(columns=["player", "stat_type", "line"])
+    """Returns a normalized odds dataframe with *at least* team lines or fallback."""
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     try:
-        r = requests.get(DK_URL, timeout=10)
-    except Exception as e:
-        log(f"[DK ERROR] Request failed: {e}")
-        return empty_df
+        resp = requests.get(DK_URL, headers=headers, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
 
-    # DK often returns HTML → we must guard against JSON decode failures
-    try:
-        data = r.json()
-    except Exception:
-        log("[DK ERROR] Non-JSON response received")
-        return empty_df
+        markets = data.get("eventGroup", {}).get("offerCategories", [])
+        rows = []
 
-    if "events" not in data:
-        log("[DK ERROR] No 'events' key found in DK response")
-        return empty_df
-
-    rows = []
-
-    for event in data["events"]:
-        markets = event.get("offerCategories", [])
         for cat in markets:
-            offers = cat.get("offerSubcategoryDescriptors", [])
-            for sub in offers:
-                for market in sub.get("offerSubcategory", {}).get("offers", []):
-                    for outcome in market.get("outcomes", []):
-                        player = outcome.get("participant")
-                        line = outcome.get("line")
-                        stat = market.get("label")
-
-                        if not player or line is None or not stat:
-                            continue
-
+            for offer in cat.get("offerSubcategoryDescriptors", []):
+                for event in offer.get("offerSubcategory", {}).get("offers", []):
+                    for selection in event:
                         rows.append({
-                            "player": player,
-                            "stat_type": stat.lower(),
-                            "line": float(line),
+                            "player": selection.get("label", None),
+                            "prop": selection.get("outcomeType", None),
+                            "line": selection.get("line", None)
                         })
 
-    if not rows:
-        log("[DK] No odds parsed from API. Returning empty DF.")
-        return empty_df
+        if rows:
+            return pd.DataFrame(rows)
 
-    df = pd.DataFrame(rows)
-    log(f"[DK] Loaded odds: {df.shape}")
+    except Exception as e:
+        log(f"[DK ERROR] Request failed: {e}")
 
-    return df
+    # ----------------------
+    # EMERGENCY FALLBACK
+    # ----------------------
+    return pd.DataFrame({
+        "player": [],
+        "prop": [],
+        "line": []
+    })
+
