@@ -1,99 +1,60 @@
 import os
 import sys
 import streamlit as st
-import pandas as pd
 
-# -------------------------------------------------------------------
-# PATH FIX — Works both locally & on Streamlit Cloud
-# -------------------------------------------------------------------
-
-PACKAGE_ROOT = os.path.dirname(__file__)
-PROJECT_ROOT = os.path.abspath(os.path.join(PACKAGE_ROOT, ".."))
+# --------------------------------------------------------------------
+# PATH FIXES FOR BOTH LOCAL + STREAMLIT CLOUD
+# --------------------------------------------------------------------
+PACKAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(PACKAGE_ROOT)
 
 if PACKAGE_ROOT not in sys.path:
-    sys.path.insert(0, PACKAGE_ROOT)
+    sys.path.append(PACKAGE_ROOT)
     print(f"[PATH FIX] Added PACKAGE_ROOT: {PACKAGE_ROOT}")
 
 if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+    sys.path.append(PROJECT_ROOT)
     print(f"[PATH FIX] Added PROJECT_ROOT: {PROJECT_ROOT}")
 
-# -------------------------------------------------------------------
-# IMPORT PREDICTION ENGINE
-# -------------------------------------------------------------------
+# --------------------------------------------------------------------
+# IMPORT DAILY ENGINE
+# --------------------------------------------------------------------
+try:
+    from nba_safe_bets.daily_predict.daily_predict import daily_predict
+except Exception as e:
+    st.error(f"❌ Failed to import prediction engine: {e}")
+    raise
 
-from nba_safe_bets.daily_predict.daily_predict import daily_predict
-from nba_safe_bets.utils.logging_config import log
-
-
-# -------------------------------------------------------------------
+# --------------------------------------------------------------------
 # STREAMLIT UI
-# -------------------------------------------------------------------
-
-st.set_page_config(page_title="NBA Safe Bets — AI Predictor", layout="wide")
-
+# --------------------------------------------------------------------
 st.title("🏀 NBA Safe Bets — AI Daily Predictor")
 st.write(
     "This app scrapes NBA data, builds features, loads ML models, and ranks the safest prop bets of the day."
 )
 
-st.divider()
-
-# -------------------------------------------------------------------
-# RUN ENGINE BUTTON
-# -------------------------------------------------------------------
-
-if st.button("🚀 Run Daily Predictor", type="primary"):
-    st.write("⏳ Running prediction engine… This may take 5–10 seconds.")
+if st.button("Run Prediction Engine"):
+    st.info("⏳ Running prediction engine… This may take 5–10 seconds.")
 
     try:
-        results = daily_predict()
+        result = daily_predict()
+
+        if result is None:
+            st.error("❌ Prediction failed — engine returned None")
+        else:
+            predictions, merged_df, feature_df = result
+
+            if predictions is None or len(predictions) == 0:
+                st.warning("⚠ Prediction engine returned no results.")
+            else:
+                st.success("✅ Predictions Generated!")
+                st.dataframe(predictions)
+
+            with st.expander("Debug Info — Merged DataFrame"):
+                st.dataframe(merged_df)
+
+            with st.expander("Debug Info — Feature DataFrame"):
+                st.dataframe(feature_df)
+
     except Exception as e:
         st.error(f"❌ Prediction failed: {e}")
-        log(f"[STREAMLIT ERROR] {e}")
-        st.stop()
-
-    # -------------------------------------------------------------------
-    # RESULTS VALIDATION
-    # -------------------------------------------------------------------
-
-    if results is None:
-        st.error("❌ Prediction returned no results.")
-        st.stop()
-
-    if isinstance(results, dict) and "error" in results:
-        st.error(f"❌ Engine Error: {results['error']}")
-        st.stop()
-
-    if isinstance(results, pd.DataFrame) and results.empty:
-        st.warning("⚠ No ranked bets available — check logs.")
-        st.stop()
-
-    # -------------------------------------------------------------------
-    # DISPLAY TOP SAFEST BETS
-    # -------------------------------------------------------------------
-
-    st.success("🎉 Prediction Complete!")
-    st.subheader("🔥 Top Safe Bets Today")
-
-    st.dataframe(
-        results.head(25),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    # -------------------------------------------------------------------
-    # OPTIONAL DEBUG SECTION
-    # -------------------------------------------------------------------
-
-    with st.expander("🛠 Debug Details"):
-        st.write("### Raw Prediction Output")
-        st.dataframe(results, use_container_width=True, hide_index=True)
-
-
-# -------------------------------------------------------------------
-# FOOTER
-# -------------------------------------------------------------------
-
-st.divider()
-st.caption("Built with ❤️ using Python, Streamlit, and XGBoost.")
