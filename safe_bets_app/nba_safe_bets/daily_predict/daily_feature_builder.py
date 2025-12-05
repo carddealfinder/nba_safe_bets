@@ -1,58 +1,91 @@
 import pandas as pd
 
+
 def build_daily_feature_set(players_df, schedule_df, injury_df, defense_df, dk_df):
+    """
+    Build the full daily feature set by merging:
+      - Players
+      - Schedule
+      - Injuries
+      - Defense rankings
+      - DraftKings odds (optional)
+    """
+
+    print("🔧 [FEATURE] Building daily feature set...")
+
+    # --------------------------------------------------------------
+    # 1. Base players
+    # --------------------------------------------------------------
     df = players_df.copy()
 
-    # ----------------------------------------------------------------
-    # Ensure missing fields exist
-    # ----------------------------------------------------------------
-    if "points" not in df: df["points"] = 0
-    if "rebounds" not in df: df["rebounds"] = 0
-    if "assists" not in df: df["assists"] = 0
-    if "threes" not in df: df["threes"] = 0
+    # --------------------------------------------------------------
+    # 2. Schedule (merge by team_name instead of 'team')
+    # --------------------------------------------------------------
+    if not schedule_df.empty:
+        df = df.merge(
+            schedule_df.rename(columns={"team": "team_name"}),
+            on="team_name",
+            how="left"
+        )
 
-    # ----------------------------------------------------------------
-    # Injury merge
-    # ----------------------------------------------------------------
-    if injury_df is not None and len(injury_df) > 0:
-        df = df.merge(injury_df, on="id", how="left")
+    # --------------------------------------------------------------
+    # 3. Injuries
+    # --------------------------------------------------------------
+    if not injury_df.empty:
+        df = df.merge(
+            injury_df.rename(columns={"player_id": "id"}),
+            on="id",
+            how="left"
+        )
+        df["injury_factor"] = df["injury_status"].notna().astype(int)
     else:
-        df["injury_status"] = None
+        df["injury_status"] = ""
+        df["injury_factor"] = 0
 
-    df["injury_factor"] = df["injury_status"].notna().astype(int)
+    # --------------------------------------------------------------
+    # 4. Defense rankings (merge by team_name)
+    # --------------------------------------------------------------
+    if not defense_df.empty:
+        df = df.merge(
+            defense_df.rename(columns={"team": "team_name"}),
+            on="team_name",
+            how="left"
+        )
+    else:
+        df["defense_rank"] = 15  # neutral placeholder
 
-    # ----------------------------------------------------------------
-    # Defense merge
-    # ----------------------------------------------------------------
-    if defense_df is not None and len(defense_df) > 0:
-        df = df.merge(defense_df, on="team", how="left")
-
-    # ----------------------------------------------------------------
-    # Odds merge
-    # ----------------------------------------------------------------
-    if dk_df is not None and len(dk_df) > 0:
+    # --------------------------------------------------------------
+    # 5. DraftKings Odds
+    # --------------------------------------------------------------
+    if not dk_df.empty:
         df = df.merge(dk_df, on="id", how="left")
-
-    # ----------------------------------------------------------------
-    # Schedule merge — ensures game_id exists
-    # ----------------------------------------------------------------
-    if "team" in schedule_df:
-        df = df.merge(schedule_df, on="team", how="left")
     else:
-        df["game_id"] = 999999
+        df["points_line"] = 0
+        df["rebounds_line"] = 0
+        df["assists_line"] = 0
+        df["threes_line"] = 0
 
-    if "game_id" not in df:
-        df["game_id"] = 999999
+    # --------------------------------------------------------------
+    # 6. Clean + standardize dtypes safely
+    # --------------------------------------------------------------
+    df = df.fillna(0).infer_objects(copy=False)
 
-    # ----------------------------------------------------------------
-    # Final cleanup
-    # ----------------------------------------------------------------
-    df.fillna(0, inplace=True)
-    df = df.infer_objects()
+    # --------------------------------------------------------------
+    # 7. Final: ensure required fields exist
+    # --------------------------------------------------------------
+    required_cols = [
+        "id",
+        "team_name",
+        "injury_factor",
+        "points_line",
+        "rebounds_line",
+        "assists_line",
+        "threes_line"
+    ]
 
-    feature_df = df[
-        ["id", "points", "rebounds", "assists", "threes",
-         "injury_factor", "game_id"]
-    ].copy()
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = 0
 
-    return df, feature_df
+    print(f"🔧 [FEATURE] Final feature set shape: {df.shape}")
+    return df

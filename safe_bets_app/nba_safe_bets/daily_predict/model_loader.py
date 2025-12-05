@@ -1,7 +1,13 @@
 import os
 import xgboost as xgb
 
+
 def load_models(model_dir):
+    """
+    Loads the XGBoost models stored as .json files
+    in the trained directory.
+    """
+
     print(f"[MODEL LOADER] Looking for models in: {model_dir}")
 
     models = {}
