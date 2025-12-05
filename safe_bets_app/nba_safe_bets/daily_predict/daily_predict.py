@@ -1,58 +1,74 @@
-import os, sys
-
-PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROJECT_ROOT = os.path.dirname(PACKAGE_ROOT)
-
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
 import os
 import pandas as pd
+from .daily_feature_builder import build_daily_features
+from .model_loader import load_models
+from .safe_bet_ranker import rank_safe_bets
 
-from nba_safe_bets.daily_predict.daily_feature_builder import build_daily_features
-from nba_safe_bets.daily_predict.model_loader import load_models
-from nba_safe_bets.daily_predict.safe_bet_ranker import rank_safe_bets
+# Scrapers
+from nba_safe_bets.scrapers.balldontlie_players import get_player_list
+from nba_safe_bets.scrapers.schedule_scraper import get_todays_schedule
+from nba_safe_bets.scrapers.injury_report import get_injury_report
+from nba_safe_bets.scrapers.defense_rankings import get_defense_rankings
+from nba_safe_bets.scrapers.vegas_odds import get_dk_odds
 
 
 def daily_predict():
     print("\n🔍 DEBUG: Starting Daily Prediction Engine")
 
-    # Build feature matrix
-    feature_df = build_daily_features()
-    if feature_df.empty:
-        print("⚠ No features generated.")
-        return pd.DataFrame(), pd.DataFrame()
+    # -----------------------------
+    # SCRAPE DATA
+    # -----------------------------
+    players = get_player_list()
+    print(f"Players DF Shape: {players.shape}")
 
-    # Load models
-    model_dir = os.path.join(
+    schedule = get_todays_schedule()
+    print(f"Schedule DF Shape: {schedule.shape}")
+
+    injuries = get_injury_report()
+    print(f"Injury DF Shape: {injuries.shape}")
+
+    defense = get_defense_rankings()
+    print(f"Defense DF Shape: {defense.shape}")
+
+    odds = get_dk_odds()
+    if odds.empty:
+        print("⚠ No odds available — continuing without lines.")
+    print(f"DraftKings Odds Shape: {odds.shape}")
+
+    # -----------------------------
+    # BUILD DAILY MERGED FEATURES
+    # -----------------------------
+    merged = build_daily_features(
+        players_df=players,
+        schedule_df=schedule,
+        injury_df=injuries,
+        defense_df=defense,
+        odds_df=odds
+    )
+
+    print(f"Merged DF Shape: {merged.shape}")
+
+    if merged is None or merged.empty:
+        return "❌ No merged data to build features."
+
+    # -----------------------------
+    # LOAD MODELS
+    # -----------------------------
+    MODEL_DIR = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "models",
-        "trained"
+        "trained",
     )
-    print("[MODEL LOADER] Using model dir:", model_dir)
 
-    models = load_models(model_dir)
+    models = load_models(MODEL_DIR)
+    print(f"Models Loaded: {list(models.keys())}")
 
-    predictions = {
-        "points": [],
-        "rebounds": [],
-        "assists": [],
-        "threes": [],
-    }
+    if not models:
+        return "❌ No models found!"
 
-    # Predict
-    for stat, model in models.items():
-        try:
-            probs = model.predict_proba(
-                feature_df[["points", "rebounds", "assists", "threes", "injury_factor", "game_id"]]
-            )[:, 1]
+    # -----------------------------
+    # SAFE BET RANKING
+    # -----------------------------
+    predictions = rank_safe_bets(merged, models)
 
-            for pid, prob in zip(feature_df["id"], probs):
-                predictions[stat].append((pid, float(prob)))
-
-        except Exception as e:
-            print(f"[PREDICT ERROR] {stat}: {e}")
-
-    ranked_df = rank_safe_bets(predictions)
-
-    return ranked_df, feature_df
+    return predictions

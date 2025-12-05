@@ -6,48 +6,45 @@ BASE_URL = "https://api.balldontlie.io/v1/players"
 
 
 def get_player_list(per_page=100):
-    """Fetch all player metadata from BallDontLie API."""
     key = os.getenv("BALDONTLIE_API_KEY")
 
     print(f"[BDL] Key exists? {bool(key)}")
 
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    headers = {"Authorization": key}  # ✔ Correct Balldontlie header
 
-    players = []
     page = 1
+    players = []
 
     while True:
         try:
             r = requests.get(
                 BASE_URL,
-                params={"page": page, "per_page": per_page},
+                params={"per_page": per_page, "page": page},
                 headers=headers,
                 timeout=10
             )
             r.raise_for_status()
         except Exception as e:
-            print(f"[BDL ERROR] {e}")
+            print(f"[BDL ERROR] Failed on page {page}: {e}")
             break
 
         data = r.json()
-        items = data.get("data", [])
 
-        if not items:
+        if "data" not in data or len(data["data"]) == 0:
             break
 
-        for p in items:
+        for p in data["data"]:
             players.append({
                 "id": p["id"],
                 "first_name": p["first_name"],
                 "last_name": p["last_name"],
-                "team": p.get("team", {}).get("full_name"),
+                "team": p["team"]["full_name"] if p.get("team") else None
             })
 
-        if not data.get("meta", {}).get("has_more", False):
+        if not data.get("meta", {}).get("next_page"):
             break
 
         page += 1
 
     df = pd.DataFrame(players)
-    print("[BDL] Loaded players:", df.shape)
     return df
