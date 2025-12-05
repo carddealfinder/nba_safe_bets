@@ -1,78 +1,48 @@
+import os
+import sys
 import streamlit as st
-import pandas as pd
-import traceback
 
-import nba_safe_bets.daily_predict.model_loader as ml
-st.write("Model Loader Path:", ml.__file__)
+# ------------------------------------------------------------
+# FIX IMPORTS: add project root to sys.path
+# ------------------------------------------------------------
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))      # safe_bets_app/
+PROJECT_ROOT = os.path.dirname(APP_ROOT)                   # nba_safe_bets/
 
-# -------------------------------------------------------------------
-# Correct imports for Streamlit Cloud
-# The package name is "nba_safe_bets", not "safe_bets_app"
-# -------------------------------------------------------------------
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# ------------------------------------------------------------
+# Correct imports
+# ------------------------------------------------------------
 from nba_safe_bets.daily_predict.daily_predict import daily_predict
 from nba_safe_bets.dashboard.components.bet_table import render_bet_table
 from nba_safe_bets.dashboard.components.player_card import render_player_card
 from nba_safe_bets.dashboard.components.charts import render_charts
 
-# -------------------------------------------------------------------
-# PAGE SETUP
-# -------------------------------------------------------------------
-st.set_page_config(
-    page_title="NBA Safe Bet Engine",
-    page_icon="🏀",
-    layout="wide"
-)
+
+# ------------------------------------------------------------
+# STREAMLIT UI
+# ------------------------------------------------------------
+st.set_page_config(page_title="NBA Safest Bets", layout="wide")
 
 st.title("🏀 NBA Top 25 Safest Bets (Daily Prediction Engine)")
-st.write("Automatically generated predictions based on stats, matchups, injuries, odds, and player context.")
-
-debug_logs = []
+st.write("Automatically generated predictions based on stats, matchups, injuries, odds, and model outputs.")
 
 
-def log_debug(msg):
-    debug_logs.append(msg)
-
-
-# -------------------------------------------------------------------
-# RUN PREDICTIONS
-# -------------------------------------------------------------------
-st.subheader("Running daily_predict()...")
-
+# ------------------------------------------------------------
+# RUN PREDICTION ENGINE
+# ------------------------------------------------------------
 try:
-    preds = daily_predict(debug_log_fn=log_debug)
-    st.success("daily_predict() executed successfully!")
-except Exception as e:
-    st.error(f"Prediction engine failed.\n\n{e}")
-    debug_logs.append(traceback.format_exc())
-    preds = None
+    results, debug_log = daily_predict()
 
-# -------------------------------------------------------------------
-# DEBUG LOG DISPLAY
-# -------------------------------------------------------------------
-with st.expander("🔍 DEBUG LOG (click to expand)"):
-    if debug_logs:
-        for line in debug_logs:
-            st.text(line)
+    with st.expander("🔍 DEBUG LOG"):
+        st.text(debug_log)
+
+    if results is None or results.empty:
+        st.error("⚠ No predictions available.")
     else:
-        st.text("No debug logs recorded yet.")
+        st.success("Predictions generated successfully!")
+        render_bet_table(results)
 
-# -------------------------------------------------------------------
-# RESULTS
-# -------------------------------------------------------------------
-st.subheader("🔒 Top 25 Safest Bets Today")
-
-if preds is None or not isinstance(preds, pd.DataFrame) or preds.empty:
-    st.warning("No predictions available.")
-else:
-    st.success("Predictions generated!")
-    render_bet_table(preds.head(25))
-
-# -------------------------------------------------------------------
-# PLAYER PROFILES
-# -------------------------------------------------------------------
-st.subheader("📊 Player Profiles")
-
-if preds is None or preds.empty:
-    st.info("Prediction results required to display player profiles.")
-else:
-    render_player_card(preds)
+except Exception as e:
+    st.error(f"❌ Prediction engine crashed: {e}")

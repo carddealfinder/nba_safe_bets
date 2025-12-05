@@ -1,127 +1,112 @@
+import os
 import pandas as pd
 
-# --- SCRAPERS ---
-from ..scrapers.balldontlie_players import get_player_list
-from ..scrapers.schedule_scraper import get_daily_schedule
-from ..scrapers.injury_report import get_injury_report
-from ..scrapers.defense_rankings import get_defense_rankings
-from ..scrapers.DraftKings_scraper import get_draftkings_odds
+from nba_safe_bets.scrapers.balldontlie_players import get_player_list
+from nba_safe_bets.scrapers.schedule_scraper import get_todays_schedule
+from nba_safe_bets.scrapers.injury_report import get_injury_report
+from nba_safe_bets.scrapers.defense_rankings import get_defense_rankings
+from nba_safe_bets.scrapers.DraftKings_scraper import get_dk_props
 
-# --- MODELS ---
-from .model_loader import load_models
-
-# --- FEATURE PIPELINE ---
-from ..processors.feature_builder import build_features
-from .safe_bet_ranker import rank_safe_bets
+from nba_safe_bets.processors.feature_builder import build_features
+from nba_safe_bets.daily_predict.model_loader import load_models
+from nba_safe_bets.daily_predict.safe_bet_ranker import rank_safe_bets
 
 
-def daily_predict(debug_log_fn=None):
-    """
-    Runs the daily prediction pipeline end-to-end.
-    This docstring MUST be plain triple quotes. No escapes, no fancy quotes.
-    """
+# --------------------------------------------------------------------
+# MODEL DIRECTORY RESOLUTION (works both locally & on Streamlit Cloud)
+# --------------------------------------------------------------------
+MODEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),  # go up from daily_predict/
+    "models",
+    "trained"
+)
 
-    def log(msg):
-        print(msg)
-        if debug_log_fn:
-            debug_log_fn(msg)
+print(f"[MODEL DIR RESOLVED] {MODEL_DIR}")
 
-    log("🔍 DEBUG: Starting Daily Prediction Engine")
 
-    # -----------------------------
-    # LOAD PLAYERS
-    # -----------------------------
-    players = get_player_list()
-    log(f"Players DF Shape: {players.shape}")
+def daily_predict():
+    """Runs the end-to-end daily prediction pipeline."""
 
-    if players.empty:
-        log("❌ Player list empty — stopping.")
-        return None
+    print("\n🔍 DEBUG: Starting Daily Prediction Engine")
 
     # -----------------------------
-    # LOAD TODAY'S SCHEDULE
+    # 1. Fetch Players
     # -----------------------------
-    schedule = get_daily_schedule()
-    log(f"Schedule DF Shape: {schedule.shape}")
-
-    if schedule.empty:
-        log("⚠ No games today — prediction aborted.")
-        return None
+    players_df = get_player_list()
+    print("Players DF Shape:", players_df.shape)
 
     # -----------------------------
-    # LOAD INJURIES
+    # 2. Fetch Schedule
     # -----------------------------
-    injuries = get_injury_report()
-    log(f"Injury DF Shape: {injuries.shape}")
+    schedule_df = get_todays_schedule()
+    print("Schedule DF Shape:", schedule_df.shape)
 
     # -----------------------------
-    # LOAD DEFENSE RANKINGS
+    # 3. Fetch Injuries
     # -----------------------------
-    defense = get_defense_rankings()
-    log(f"Defense DF Shape: {defense.shape}")
+    injury_df = get_injury_report()
+    print("Injury DF Shape:", injury_df.shape)
 
     # -----------------------------
-    # LOAD DRAFTKINGS ODDS
+    # 4. Fetch Defense Rankings
     # -----------------------------
-    odds = get_draftkings_odds()
-    log(f"DraftKings Odds Shape: {odds.shape}")
-
-    if odds.empty:
-        log("⚠ No odds available — continuing without lines.")
-        odds["line"] = None
+    defense_df = get_defense_rankings()
+    print("Defense DF Shape:", defense_df.shape)
 
     # -----------------------------
-    # MERGE ALL DATA
+    # 5. Fetch Vegas / DK Lines
     # -----------------------------
-    merged = players.merge(schedule, on="team", how="left")
-    merged = merged.merge(injuries, on="id", how="left")
-    merged = merged.merge(defense, on="team", how="left")
+    dk_df = get_dk_props()
+    print("DraftKings Odds Shape:", dk_df.shape)
 
-    # Attach odds by fuzzy matching if available
-    if "player" in odds.columns:
-        odds = odds.rename(columns={"player": "full_name"})
-        merged["full_name"] = merged["first_name"] + " " + merged["last_name"]
-        merged = merged.merge(odds, on="full_name", how="left")
-
-    log(f"Merged DF Shape: {merged.shape}")
+    if dk_df.empty:
+        print("⚠ No odds available — continuing without lines.")
 
     # -----------------------------
-    # BUILD FEATURES
+    # 6. Merge Data
+    # -----------------------------
+    merged = players_df.copy()
+    merged["game_id"] = 111  # placeholder for now until schedule mapping final
+
+    print("Merged DF Shape:", merged.shape)
+
+    # -----------------------------
+    # 7. Build ML-ready Features
     # -----------------------------
     features = build_features(merged)
-    log(f"Feature DF Shape: {features.shape}")
+    print("Feature DF Shape:", features.shape)
 
     # -----------------------------
-    # LOAD MODELS
+    # 8. Load Models
     # -----------------------------
-    models = load_models()
-    log(f"Models Loaded: {list(models.keys())}")
+    print(f"[MODEL LOADER] Looking for models in: {MODEL_DIR}")
+
+    models = load_models(MODEL_DIR)
+    print("Models Loaded:", list(models.keys()))
 
     if not models:
-        log("⚠ No models available — cannot predict.")
-        return None
+        print("⚠ No models available — cannot predict.")
+        return pd.DataFrame()
 
     # -----------------------------
-    # RUN PREDICTIONS
+    # 9. Run Predictions
     # -----------------------------
-    preds = []
-
+    predictions = {}
     for stat, model in models.items():
         try:
-            prob = model.predict_proba(features)[:, 1]
-            merged[f"pred_{stat}"] = prob
-            preds.append(stat)
+            predictions[stat] = model.predict_proba(features)[:, 1]
         except Exception as e:
-            log(f"[PREDICT ERROR] {stat}: {e}")
+            print(f"[PREDICT ERROR] {stat}: {e}")
 
-    if not preds:
-        log("⚠ Could not generate any predictions.")
-        return None
+    if not predictions:
+        print("⚠ Could not generate any predictions.")
+        return pd.DataFrame()
 
     # -----------------------------
-    # RANK BETS
+    # 10. Rank Safe Bets
     # -----------------------------
-    ranked = rank_safe_bets(merged)
-    log("Prediction pipeline finished successfully.")
+    results_df = rank_safe_bets(merged, predictions)
+    print("\n🔒 Top 25 Safest Bets Today")
+    print(results_df.head(25))
 
-    return ranked
+    return results_df

@@ -1,61 +1,61 @@
 import pandas as pd
+import numpy as np
 import xgboost as xgb
 import os
-
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "trained")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-MODEL_FILES = {
-    "points": "points_model.json",
-    "rebounds": "rebounds_model.json",
-    "assists": "assists_model.json",
-    "threes": "threes_model.json"
+# ------------------------------------------------------------
+# Synthetic training data matching the EXACT feature columns
+# ------------------------------------------------------------
+df = pd.DataFrame({
+    "id": np.arange(1, 501),
+    "points": np.random.randint(5, 40, 500),
+    "rebounds": np.random.randint(0, 15, 500),
+    "assists": np.random.randint(0, 12, 500),
+    "threes": np.random.randint(0, 8, 500),
+    "injury_factor": np.random.randint(0, 2, 500),
+    "game_id": np.random.randint(100, 500, 500),
+})
+
+FEATURES = ["id", "points", "rebounds", "assists", "threes", "injury_factor", "game_id"]
+
+# Create slightly noisy targets
+df["target_points"] = df["points"] + np.random.normal(0, 3, 500)
+df["target_rebounds"] = df["rebounds"] + np.random.normal(0, 2, 500)
+df["target_assists"] = df["assists"] + np.random.normal(0, 2, 500)
+df["target_threes"] = df["threes"] + np.random.normal(0, 1, 500)
+
+targets = {
+    "points": "target_points",
+    "rebounds": "target_rebounds",
+    "assists": "target_assists",
+    "threes": "target_threes",
 }
 
+# ------------------------------------------------------------
+# Train XGBoost models
+# ------------------------------------------------------------
+print("Training models using features:", FEATURES)
 
-def train_dummy_xgb_model(name: str):
-    """Train a minimal but valid XGBoost classifier model."""
+for name, target in targets.items():
+    print(f"\nTraining model: {name}")
 
-    print(f"🔧 Training model for: {name}")
+    model = xgb.XGBRegressor(
+        n_estimators=200,
+        max_depth=4,
+        learning_rate=0.1,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        objective="reg:squarederror",
+    )
 
-    # Create dummy training data
-    X = pd.DataFrame({
-        "feature1": [0, 1, 0, 1],
-        "feature2": [1, 1, 0, 0],
-        "feature3": [0.2, 0.9, 0.1, 0.8]
-    })
+    model.fit(df[FEATURES], df[target])
 
-    y = [0, 1, 0, 1]
+    output_path = os.path.join(MODEL_DIR, f"{name}_model.json")
+    model.save_model(output_path)
 
-    # Convert to DMatrix
-    dtrain = xgb.DMatrix(X, label=y)
+    print(f"Saved model → {output_path}")
 
-    # Simple booster
-    params = {
-        "objective": "binary:logistic",
-        "eval_metric": "logloss"
-    }
-
-    model = xgb.train(params, dtrain, num_boost_round=20)
-
-    # Save as .json
-    out_path = os.path.join(MODEL_DIR, MODEL_FILES[name])
-    model.save_model(out_path)
-
-    print(f"✅ Saved model: {out_path}")
-
-
-def train_all_models():
-    print("==============================================")
-    print("  TRAINING ALL XGBOOST MODELS FOR SAFE BETS")
-    print("==============================================")
-
-    for key in MODEL_FILES.keys():
-        train_dummy_xgb_model(key)
-
-    print("\n🎉 All XGBoost models trained successfully!\n")
-
-
-if __name__ == "__main__":
-    train_all_models()
+print("\n🎉 Training complete! New models generated successfully.")
