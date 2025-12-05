@@ -59,3 +59,39 @@ for name, target in targets.items():
     print(f"Saved model → {output_path}")
 
 print("\n🎉 Training complete! New models generated successfully.")
+
+def train_all_models(df):
+    """
+    Train all prop models using the provided full training dataframe.
+    Called nightly by automation/auto_train.py
+    """
+
+    feature_cols = ["id", "points", "rebounds", "assists", "threes", "injury_factor", "game_id"]
+
+    X = df[feature_cols]
+    models = {
+        "points": df["points"],
+        "rebounds": df["rebounds"],
+        "assists": df["assists"],
+        "threes": df["threes"],
+    }
+
+    for name, y in models.items():
+        print(f"Training model: {name}")
+
+        model = xgb.XGBRegressor(
+            n_estimators=300,
+            max_depth=6,
+            learning_rate=0.1,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            objective="reg:squarederror"
+        )
+
+        model.fit(X, y)
+
+        out_path = os.path.join(MODEL_DIR, f"{name}_model.json")
+        model.save_model(out_path)
+        print(f"Saved model → {out_path}")
+
+    print("🎉 All models retrained successfully!")

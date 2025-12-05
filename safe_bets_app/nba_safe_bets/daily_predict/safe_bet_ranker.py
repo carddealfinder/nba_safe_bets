@@ -1,38 +1,33 @@
 import pandas as pd
+import numpy as np
 
 
-def rank_safe_bets(pred_df, merged_df):
+def rank_safe_bets(predictions_dict):
     """
-    Combines predictions with merged dataset and produces a ranked list of safe bets.
+    predictions_dict = {
+        "points": [(player_id, prob_over)],
+        "rebounds": [...],
+        ...
+    }
     """
 
-    df = merged_df.copy()
-    pred_cols = [c for c in pred_df.columns if c != "player_id"]
+    rows = []
+    for stat, preds in predictions_dict.items():
+        for pid, prob in preds:
+            rows.append({
+                "player_id": pid,
+                "stat": stat,
+                "prob_over": prob
+            })
 
-    # --------------------------
-    # Merge predicted values
-    # --------------------------
-    df = df.merge(pred_df, left_on="id", right_on="player_id", how="left")
-    df.drop(columns=["player_id"], inplace=True)
+    if not rows:
+        return pd.DataFrame()
 
-    # --------------------------
-    # Build safety score
-    # Weighted simple example (can tune later)
-    # --------------------------
-    df["safety_score"] = (
-        df.get("points", 0) * 0.4 +
-        df.get("rebounds", 0) * 0.2 +
-        df.get("assists", 0) * 0.2 +
-        df.get("threes", 0) * 0.2
-    )
+    df = pd.DataFrame(rows)
 
-    # Push injured players lower
-    df["safety_score"] -= df["injury_factor"] * 5
+    # Rank by highest probability
+    df["rank"] = df["prob_over"].rank(ascending=False, method="first")
 
-    # --------------------------
-    # Sort best bets
-    # --------------------------
-    df = df.sort_values("safety_score", ascending=False)
+    df = df.sort_values("rank").reset_index(drop=True)
 
-    # Keep top 25
-    return df.head(25)
+    return df

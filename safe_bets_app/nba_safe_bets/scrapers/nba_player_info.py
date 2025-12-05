@@ -1,44 +1,38 @@
 import requests
 import pandas as pd
+from nba_safe_bets.utils.retry import safe_request
+from nba_safe_bets.utils.logging_config import log
 
-BASE_URL = "https://api.balldontlie.io/v1"
-HEADERS = {"Accept": "application/json"}
+BASE_URL = "https://api.balldontlie.io/v1/season_averages"
 
-def get_player_list():
-    """Returns all NBA players (first 500) from BallDontLie."""
-    players = []
-    page = 1
 
-    while True:
-        url = f"{BASE_URL}/players"
-        params = {"per_page": 100, "page": page}
+def get_season_averages(player_id):
+    """
+    Returns season averages for a player.
+    Returns a DataFrame with columns including pts, reb, ast, fg3m
+    """
 
-        r = requests.get(url, params=params, headers=HEADERS, timeout=10)
-        if r.status_code != 200:
-            print("[ERROR] Failed to fetch players:", r.text)
-            break
+    params = {"player_ids[]": player_id}
 
-        data = r.json()
-        players.extend(data["data"])
+    log(f"[SEASON AVG] Fetching season averages for player {player_id}")
 
-        if page >= data["meta"]["total_pages"]:
-            break
-
-        page += 1
-
-    if not players:
-        print("❌ No player data returned from BallDontLie API")
+    r = safe_request(BASE_URL, params=params)
+    if r is None:
+        log(f"[SEASON AVG ERROR] Failed to fetch season averages for {player_id}")
         return pd.DataFrame()
 
-    df = pd.DataFrame(players)
-    df = df.rename(columns={
-        "id": "PLAYER_ID",
-        "first_name": "first_name",
-        "last_name": "last_name",
-        "team": "team"
-    })
+    data = r.json()
+    if "data" not in data or len(data["data"]) == 0:
+        log(f"[SEASON AVG] No season averages found for {player_id}")
+        return pd.DataFrame()
 
-    df["PLAYER_NAME"] = df["first_name"] + " " + df["last_name"]
-    df["TEAM_ID"] = df["team"].apply(lambda x: x.get("abbreviation") if isinstance(x, dict) else None)
+    row = data["data"][0]
 
-    return df[["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"]]
+    df = pd.DataFrame([{
+        "pts": row.get("pts", 0),
+        "reb": row.get("reb", 0),
+        "ast": row.get("ast", 0),
+        "fg3m": row.get("fg3m", 0),
+    }])
+
+    return df
