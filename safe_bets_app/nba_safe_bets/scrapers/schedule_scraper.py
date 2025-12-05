@@ -1,39 +1,27 @@
-import os
 import requests
 import pandas as pd
-from datetime import datetime
-
-BASE_URL = "https://api.balldontlie.io/v1/games"
+from datetime import date
 
 
 def get_todays_schedule():
-    key = os.getenv("BALDONTLIE_API_KEY")
-    headers = {"Authorization": key}
+    today = date.today().isoformat()
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    print(f"[SCHEDULE] Fetching schedule for {today}")
+    url = "https://api.balldontlie.io/v1/games"
+    params = {"dates[]": today}
 
-    try:
-        r = requests.get(
-            BASE_URL,
-            params={"dates[]": today, "per_page": 100},
-            headers=headers,
-            timeout=10
-        )
-        r.raise_for_status()
-        data = r.json()
+    r = requests.get(url, params=params)
+    if r.status_code != 200:
+        return pd.DataFrame(columns=["player_id", "team", "game_id"])
 
-        if "data" not in data:
-            return pd.DataFrame(columns=["game_id", "home_team", "away_team"])
+    games = r.json().get("data", [])
+    rows = []
 
-        games = [{
-            "game_id": g["id"],
-            "home_team": g["home_team"]["full_name"],
-            "away_team": g["visitor_team"]["full_name"]
-        } for g in data["data"]]
+    for game in games:
+        for player in game.get("players", []):
+            rows.append({
+                "player_id": player["id"],
+                "team": player.get("team"),
+                "game_id": game["id"]
+            })
 
-        return pd.DataFrame(games)
-
-    except Exception as e:
-        print(f"[SCHEDULE ERROR] {e}")
-        return pd.DataFrame(columns=["game_id", "home_team", "away_team"])
+    return pd.DataFrame(rows)

@@ -2,49 +2,37 @@ import os
 import requests
 import pandas as pd
 
+
 BASE_URL = "https://api.balldontlie.io/v1/players"
 
 
-def get_player_list(per_page=100):
+def get_player_list():
     key = os.getenv("BALDONTLIE_API_KEY")
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
 
-    print(f"[BDL] Key exists? {bool(key)}")
-
-    headers = {"Authorization": key}  # ✔ Correct Balldontlie header
-
-    page = 1
     players = []
+    page = 1
 
     while True:
-        try:
-            r = requests.get(
-                BASE_URL,
-                params={"per_page": per_page, "page": page},
-                headers=headers,
-                timeout=10
-            )
-            r.raise_for_status()
-        except Exception as e:
-            print(f"[BDL ERROR] Failed on page {page}: {e}")
+        r = requests.get(BASE_URL, params={"page": page, "per_page": 100}, headers=headers)
+        if r.status_code != 200:
             break
 
-        data = r.json()
-
-        if "data" not in data or len(data["data"]) == 0:
+        data = r.json().get("data", [])
+        if not data:
             break
 
-        for p in data["data"]:
+        for p in data:
             players.append({
-                "id": p["id"],
+                "player_id": p["id"],
                 "first_name": p["first_name"],
                 "last_name": p["last_name"],
                 "team": p["team"]["full_name"] if p.get("team") else None
             })
 
-        if not data.get("meta", {}).get("next_page"):
+        meta = r.json().get("meta", {})
+        if not meta.get("has_more"):
             break
-
         page += 1
 
-    df = pd.DataFrame(players)
-    return df
+    return pd.DataFrame(players)

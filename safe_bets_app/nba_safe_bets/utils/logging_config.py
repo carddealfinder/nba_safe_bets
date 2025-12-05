@@ -1,3 +1,2 @@
-def log(message: str):
-    """Simple print logger for Streamlit Cloud compatibility."""
-    print(message)
+def log(msg):
+    print(msg)
