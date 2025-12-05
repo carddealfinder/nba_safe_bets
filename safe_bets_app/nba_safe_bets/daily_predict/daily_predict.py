@@ -1,126 +1,131 @@
+import os
 import pandas as pd
-import datetime
-import traceback
 
-# Scrapers
 from nba_safe_bets.scrapers.balldontlie_players import get_player_list
 from nba_safe_bets.scrapers.schedule_scraper import get_todays_schedule
 from nba_safe_bets.scrapers.injury_report import get_injury_report
 from nba_safe_bets.scrapers.defense_rankings import get_defense_rankings
 from nba_safe_bets.scrapers.vegas_odds import get_dk_odds
 
-# Feature builder
-from nba_safe_bets.daily_predict.daily_feature_builder import (
-    build_daily_feature_set
-)
-
-# Model loader (NEW VERSION using dynamic model_dir)
-from nba_safe_bets.daily_predict.model_loader import load_models
-
-# Ranking logic
+from nba_safe_bets.daily_predict.daily_feature_builder import build_daily_feature_set
 from nba_safe_bets.daily_predict.safe_bet_ranker import rank_safe_bets
+from nba_safe_bets.daily_predict.model_loader import load_models
 
 
 def daily_predict():
     """
-    Runs the full daily prediction pipeline:
-    - Scrape players, schedule, injuries, defense, and odds
-    - Build features
-    - Load ML models
-    - Predict props
-    - Rank safest bets
+    Orchestrates the daily prediction engine:
+    - loads players
+    - loads injury report
+    - loads schedule
+    - loads defense rankings
+    - loads DK odds
+    - merges everything and builds features
+    - loads models
+    - generates predictions + safe bet rankings
     """
 
-    print("\n🔍 DEBUG: Starting Daily Prediction Engine")
+    print("🔍 DEBUG: Starting Daily Prediction Engine")
 
-    try:
-        # ------------------------
-        # 1. Load all raw data
-        # ------------------------
-        players = get_player_list()
-        print(f"Players DF Shape: {players.shape}")
+    # -----------------------------
+    # 1. Load Players
+    # -----------------------------
+    players = get_player_list()
+    print(f"Players DF Shape: {players.shape}")
 
-        schedule = get_todays_schedule()
-        print(f"Schedule DF Shape: {schedule.shape}")
+    if players.empty:
+        raise ValueError("Player list is empty — cannot continue")
 
-        injuries = get_injury_report()
-        print(f"Injury DF Shape: {injuries.shape}")
+    # -----------------------------
+    # 2. Load Schedule
+    # -----------------------------
+    schedule = get_todays_schedule()
+    print(f"Schedule DF Shape: {schedule.shape}")
 
-        defense = get_defense_rankings()
-        print(f"Defense DF Shape: {defense.shape}")
+    # -----------------------------
+    # 3. Load Injury Report
+    # -----------------------------
+    injury_df = get_injury_report()
+    print(f"Injury DF Shape: {injury_df.shape}")
 
-        dk_odds = get_dk_odds()
-        print(f"DraftKings Odds Shape: {dk_odds.shape}")
+    # -----------------------------
+    # 4. Defense Rankings
+    # -----------------------------
+    defense_df = get_defense_rankings()
+    print(f"Defense DF Shape: {defense_df.shape}")
 
-        if dk_odds.empty:
-            print("⚠ No odds available — continuing without lines.")
+    # -----------------------------
+    # 5. Vegas Odds
+    # -----------------------------
+    dk_odds = get_dk_odds()
+    print(f"DraftKings Odds Shape: {dk_odds.shape}")
 
-        # ------------------------
-        # 2. Build Daily Features
-        # ------------------------
-        merged_df = build_daily_feature_set(
-            players_df=players,
-            schedule_df=schedule,
-            injury_df=injuries,
-            defense_df=defense,
-            dk_df=dk_odds
-        )
+    if dk_odds.empty:
+        print("⚠ No odds available — continuing without lines.")
 
-        print(f"Merged DF Shape: {merged_df.shape}")
+    # -----------------------------
+    # 6. Build Features
+    # -----------------------------
+    merged_df = build_daily_feature_set(
+        players_df=players,
+        schedule_df=schedule,
+        injury_df=injury_df,
+        defense_df=defense_df,
+        dk_df=dk_odds
+    )
 
-        # ------------------------
-        # 3. Load Models
-        # ------------------------
-        models = load_models()  # Now auto-locates correct trained/ folder
+    print(f"Merged DF Shape: {merged_df.shape}")
 
-        if not models:
-            raise RuntimeError("❌ No models found!")
+    # Required columns for features
+    feature_cols = [
+        "id", "points", "rebounds", "assists", "threes",
+        "injury_factor", "game_id"
+    ]
 
-        # ------------------------
-        # 4. Prepare feature dataframe
-        # ------------------------
-        required_cols = ["id", "game_id", "injury_factor"]
-        stat_targets = ["points", "rebounds", "assists", "threes"]
+    # Guarantee feature safety
+    for col in feature_cols:
+        if col not in merged_df.columns:
+            print(f"[FEATURE WARNING] Missing feature column: {col} → defaulting to 0")
+            merged_df[col] = 0
 
-        for stat in stat_targets:
-            if stat not in merged_df.columns:
-                merged_df[stat] = 0  # filler until real stats are added
+    feature_df = merged_df[feature_cols].copy()
+    print(f"Feature DF Shape: {feature_df.shape}")
 
-        feature_cols = required_cols + stat_targets
+    # -----------------------------
+    # 7. Load Models
+    # -----------------------------
+    model_dir = os.path.join(
+        os.path.dirname(__file__),
+        "..", "models", "trained"
+    )
+    model_dir = os.path.abspath(model_dir)
 
-        feature_df = merged_df[feature_cols].copy()
-        print(f"Feature DF Shape: {feature_df.shape}")
+    models = load_models(model_dir)
+    print(f"Models Loaded: {list(models.keys())}")
 
-        # ------------------------
-        # 5. Make predictions
-        # ------------------------
-        predictions = {}
+    if not models:
+        raise ValueError("❌ No models found — cannot predict.")
 
-        for stat in stat_targets:
-            model = models.get(stat)
-            if model is None:
-                print(f"⚠ Model missing for {stat}, skipping.")
-                continue
+    # -----------------------------
+    # 8. Generate Predictions
+    # -----------------------------
+    preds = {}
 
-            try:
-                preds = model.predict(feature_df)
-                predictions[stat] = preds
-                merged_df[f"pred_{stat}"] = preds
-            except Exception as e:
-                print(f"Prediction error for {stat}: {e}")
+    for stat, model in models.items():
+        try:
+            preds[stat] = model.predict(feature_df)
+        except Exception as e:
+            print(f"[PRED ERROR] Failed to predict {stat}: {e}")
+            preds[stat] = [0] * len(feature_df)
 
-        # ------------------------
-        # 6. Rank safest bets
-        # ------------------------
-        if not predictions:
-            raise RuntimeError("❌ No predictions generated.")
+    # Add predictions into main DF
+    for stat in preds:
+        merged_df[f"pred_{stat}"] = preds[stat]
 
-        ranked = rank_safe_bets(merged_df)
-        print("🎯 Predictions & rankings complete!")
+    # -----------------------------
+    # 9. Rank Bets
+    # -----------------------------
+    ranked = rank_safe_bets(merged_df)
 
-        return ranked
-
-    except Exception as e:
-        print(f"❌ Prediction engine crashed: {e}")
-        traceback.print_exc()
-        return None
+    print("🔮 Prediction engine complete.")
+    return ranked, merged_df, feature_df
