@@ -1,3 +1,5 @@
+print("[DEBUG] model_loader.py loaded from:", __file__)
+
 import os
 import xgboost as xgb
 

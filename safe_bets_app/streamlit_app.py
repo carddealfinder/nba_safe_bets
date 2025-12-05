@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import traceback
 
+import nba_safe_bets.daily_predict.model_loader as ml
+st.write("Model Loader Path:", ml.__file__)
+
 # -------------------------------------------------------------------
 # Correct imports for Streamlit Cloud
 # The package name is "nba_safe_bets", not "safe_bets_app"
