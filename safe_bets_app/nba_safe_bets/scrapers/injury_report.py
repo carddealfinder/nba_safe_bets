@@ -1,27 +1,46 @@
 import pandas as pd
 import requests
+from nba_safe_bets.utils.logging_config import log
+
+
+INJURY_URL = "https://cdn.nba.com/static/json/injury/injury_report.json"
 
 
 def get_injury_report():
-    """Returns injury report dataframe (empty if API unavailable)."""
+    """
+    Returns a DataFrame with columns:
+        id (may be None if we cannot match)
+        injury_status (string)
 
-    url = "https://cdn.nba.com/static/json/injury/injury_report.json"
+    Ensures compatibility with feature builder.
+    """
 
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(INJURY_URL, timeout=10)
         r.raise_for_status()
-        data = r.json().get("league", {}).get("standard", [])
+        data = r.json()
     except Exception as e:
-        print(f"[INJURY] Unable to fetch injury report: {e}")
-        return pd.DataFrame(columns=["player_id", "injury_status"])
+        log(f"[INJURY] Unable to fetch injury report: {e}")
+        return pd.DataFrame(columns=["id", "injury_status"])
 
-    rows = []
-    for p in data:
-        rows.append({
-            "player_id": int(p.get("personId", 0)),
-            "injury_status": p.get("comment", None)
+    if "league" not in data or "standard" not in data["league"]:
+        return pd.DataFrame(columns=["id", "injury_status"])
+
+    records = []
+    for p in data["league"]["standard"]:
+        player_id = p.get("personId")  # this is sometimes a numeric string
+        status = p.get("injuryStatus", "Unknown")
+
+        # Normalize player_id → int or None
+        try:
+            player_id = int(player_id)
+        except:
+            player_id = None
+
+        records.append({
+            "id": player_id,
+            "injury_status": status
         })
 
-    df = pd.DataFrame(rows)
-    print("[INJURY] Loaded injury report:", df.shape)
-    return df
+    df = pd.DataFrame(records)
+    return df[["id", "injury_status"]]
