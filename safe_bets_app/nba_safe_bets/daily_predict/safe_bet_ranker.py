@@ -1,33 +1,29 @@
 import pandas as pd
-import numpy as np
 
 
-def rank_safe_bets(predictions_dict):
+def rank_safe_bets(df):
     """
-    predictions_dict = {
-        "points": [(player_id, prob_over)],
-        "rebounds": [...],
-        ...
-    }
+    Ranks the safest bets based on prediction confidence.
+    If odds are missing, fallback to predicted performance.
     """
 
-    rows = []
-    for stat, preds in predictions_dict.items():
-        for pid, prob in preds:
-            rows.append({
-                "player_id": pid,
-                "stat": stat,
-                "prob_over": prob
-            })
+    print("[RANKER] Ranking safest bets...")
 
-    if not rows:
-        return pd.DataFrame()
+    required_pred_cols = ["pred_points", "pred_rebounds", "pred_assists", "pred_threes"]
+    for col in required_pred_cols:
+        if col not in df.columns:
+            df[col] = 0.0
 
-    df = pd.DataFrame(rows)
+    # Simplified ranking metric:
+    #   higher predicted production → safer overs
+    df["safety_score"] = (
+        df["pred_points"] * 0.4 +
+        df["pred_rebounds"] * 0.2 +
+        df["pred_assists"] * 0.2 +
+        df["pred_threes"] * 0.2
+    )
 
-    # Rank by highest probability
-    df["rank"] = df["prob_over"].rank(ascending=False, method="first")
+    ranked = df.sort_values("safety_score", ascending=False).head(30)
 
-    df = df.sort_values("rank").reset_index(drop=True)
-
-    return df
+    print("[RANKER] Ranking generated!")
+    return ranked
