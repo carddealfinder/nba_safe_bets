@@ -1,13 +1,17 @@
 import pandas as pd
-from nba_safe_bets.scrapers.player_info import get_player_info
+
+# ✔ FIXED: Correct file name is nba_player_info.py
+from nba_safe_bets.scrapers.nba_player_info import get_player_info
+
 from nba_safe_bets.scrapers.schedule_scraper import get_todays_schedule
 from nba_safe_bets.scrapers.injury_report import get_injury_report
 from nba_safe_bets.scrapers.defense_rankings import get_defense_rankings
-from nba_safe_bets.scrapers.vegas_odds import get_dk_odds
+from nba_safe_bets.scrapers.DraftKings_scraper import get_dk_odds
 
 from nba_safe_bets.daily_predict.daily_feature_builder import build_daily_feature_set
 from nba_safe_bets.daily_predict.model_loader import load_models
 from nba_safe_bets.daily_predict.safe_bet_ranker import rank_safe_bets
+
 
 MODEL_DIR = "safe_bets_app/nba_safe_bets/models/trained"
 
